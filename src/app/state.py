@@ -7,7 +7,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.app.metrics import PerformanceTracker
-
+"""
+定义运行时的全局状态
+"""
 
 @dataclass
 class SessionState:
