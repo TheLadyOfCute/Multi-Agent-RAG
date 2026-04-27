@@ -1,0 +1,50 @@
+[
+  {
+    "id": "q001",
+    "question": "How do I fine-tune a BERT model specifically for detecting sarcasm in tweets using Hugging Face Transformers?",
+    "ground_truth": "unanswerable",
+    "reference_contexts": [],
+    "gold_chunk_ids": [],
+    "question_type": "unanswerable"
+  },
+  {
+    "id": "q002",
+    "question": "What is backpropagation and why is it16 important in deep learning?",
+    "ground_truth": "Backpropagation is one of the most important algorithms in deep learning. It applies the chain rule of calculus to compute gradients of the loss with respect to every learnable parameter in the network. Once the gradients are known, an optimization algorithm updates the parameters to reduce future error.",
+    "reference_contexts": [
+      "Backpropagation is one of the most important algorithms in deep learning. It applies the chain rule of calculus to compute gradients of the loss with respect to every learnable parameter in the network. Once the gradients are known, an optimization algorithm updates the parameters to reduce future error."
+    ],
+    "gold_chunk_ids": [
+      "flat_c06dbe64e5924f6f391bcf833e3b934e_0"
+    ],
+    "question_type": "definitional"
+  },
+  {
+    "id": "q003",
+    "question": "What are the05 key differences between Graph Neural Networks and Transformers for molecular property prediction?",
+    "ground_truth": "unanswerable",
+    "reference_contexts": [],
+    "gold_chunk_ids": [],
+    "question_type": "unanswerable"
+  },
+  {
+    "id": "q004",
+    "question": "What specific hyperparameter settings and data preprocessing steps are used to train a Vision Transformer from scratch on the CIFAR-100 dataset?",
+    "ground_truth": "unanswerable",
+    "reference_contexts": [],
+    "gold_chunk_ids": [],
+    "question_type": "unanswerable"
+  },
+  {
+    "id": "q005",
+    "question": "What is the role of self-attention in the transformer architecture, and why does it make transformers more parallelizable than recurrent neural networks?",
+    "ground_truth": "Self-attention allows a token to attend to other tokens in the sequence, making it easier to capture long-distance dependencies. Unlike recurrent models that process tokens strictly one by one, transformers rely on attention mechanisms to model relationships between tokens more flexibly, and this architecture is highly parallelizable.",
+    "reference_contexts": [
+      "Instead of processing tokens strictly one by one like a recurrent model, transformers rely on attention mechanisms to model relationships between tokens more flexibly. Self-attention allows a token to attend to other tokens in the sequence, making it easier to capture long-distance dependencies. This architecture is highly parallelizable, which made it attractive for large-scale training."
+    ],
+    "gold_chunk_ids": [
+      "flat_c06dbe64e5924f6f391bcf833e3b934e_1"
+    ],
+    "question_type": "causal"
+  }
+]
