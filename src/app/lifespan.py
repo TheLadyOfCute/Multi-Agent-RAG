@@ -17,7 +17,6 @@ configure_runtime()
 async def app_lifespan(_app):
     # 在首次请求前恢复已持久化的状态
     get_restore_document_state_use_case().restore_persisted_state()
-
     # 获取应用配置
     settings = get_settings()
 
