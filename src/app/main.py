@@ -29,3 +29,26 @@ app.include_router(documents_router)
 app.include_router(data_router)
 app.include_router(chat_router)
 app.include_router(evaluation_router)
+
+
+def main() -> None:
+    import logging
+
+    import uvicorn
+
+    from src.config import get_settings
+
+    settings = get_settings()
+    # Uvicorn configures handlers for uvicorn.* loggers by default; use that so messages show up.
+    logger = logging.getLogger("uvicorn.error")
+    logger.info("Starting API (bind=%s:%s reload=%s)", settings.api_host, settings.api_port, settings.api_reload)
+    uvicorn.run(
+        "src.app.main:app",
+        host=settings.api_host,
+        port=settings.api_port,
+        reload=settings.api_reload,
+    )
+
+
+if __name__ == "__main__":
+    main()

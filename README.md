@@ -283,10 +283,10 @@ CACHE_TTL=3600
 uvicorn src.app.main:app --reload
 ```
 
-如果项目入口支持模块启动，也可以使用：
+如果希望用模块方式启动，也可以使用：
 
 ```bash
-python -m src.app
+python -m src.app.main
 ```
 
 检查接口：

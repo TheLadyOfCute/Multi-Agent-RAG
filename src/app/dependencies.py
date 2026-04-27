@@ -34,6 +34,20 @@ from src.use_cases.system import (
     GetSystemStateUseCase,
     SavePerformanceMetricsUseCase,
 )
+"""
+是后端依赖装配/依赖注入(DI)的集中入口。
+
+它负责统一创建并缓存应用运行所需的核心对象,例如 RuntimeState、
+TaskRegistry、RedisCacheService 以及各类 UseCase,避免在每次请求中
+重复创建对象,同时方便在不同路由和生命周期钩子之间共享状态与连接。
+
+这里通过 @lru_cache(maxsize=1) 将部分对象做成当前进程内的单例。
+第一次调用 get_* 函数时会创建对象,后续调用会直接复用已创建的实例。
+
+各类 UseCase 的依赖关系也在这里统一装配,例如 RunChatQueryUseCase
+会依赖 RuntimeState、TaskRegistry、Embedder 和 CacheService。
+路由层只需要调用对应的 get_*_use_case(),不需要关心对象如何创建。
+"""
 
 
 @lru_cache(maxsize=1)#缓存
@@ -56,11 +70,11 @@ def get_cache_service() -> RedisCacheService:
 
 @lru_cache(maxsize=1)
 def get_embedder():
-    # 尝试延迟导入嵌入生成器，避免启动时强依赖 OpenAI 包
+    # 尝试延迟导入嵌入生成器,避免启动时强依赖 OpenAI 包
     try:
         from src.ingestion.embedder import EmbeddingGenerator
     except ModuleNotFoundError as exc:
-        # 如果缺失的不是 openai 包，则继续抛出原始异常
+        # 如果缺失的不是 openai 包,则继续抛出原始异常
         if exc.name != "openai":
             raise
 
@@ -193,7 +207,7 @@ def get_save_performance_metrics_use_case() -> SavePerformanceMetricsUseCase:
 class _UnavailableEmbedder:
     # 定义 OpenAI 包不可用时使用的占位嵌入器
     def __init__(self, exc: ModuleNotFoundError):
-        # 保存原始异常，便于后续抛出时保留上下文
+        # 保存原始异常,便于后续抛出时保留上下文
         self.exc = exc
 
     def get_stats(self) -> dict:
