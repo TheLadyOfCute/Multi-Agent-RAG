@@ -206,7 +206,7 @@ class RedisCacheService:
 
         # 生成稳定 JSON，再计算哈希作为知识库版本
         payload = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()#SHA-256哈希值id
 
     # 规范化查询文本，减少等价查询的缓存重复
     @staticmethod

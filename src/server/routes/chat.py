@@ -22,6 +22,7 @@ def chat_messages() -> dict[str, Any]:
     return {"messages": get_get_messages_use_case().execute()}
 
 
+#测试用
 @router.post("/messages")
 def create_chat_message(request: ChatRequest) -> dict[str, Any]:
     query = request.query.strip()

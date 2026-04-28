@@ -4,7 +4,6 @@ Agent State Model - Shared state between all agents.
 
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Dict, Any
-from datetime import datetime
 from enum import Enum
 from src.models.chunk import Chunk 
 
@@ -24,7 +23,7 @@ class AgentState(BaseModel):
     strategy: Optional[Strategy] = None
 
     # Planner: Query Router outputs
-    # 由 PlannerAgent 选出的检索器列表，e.g. ["vector", "keyword", "graph"]
+    # ["vector", "keyword", "graph"]
     selected_retrievers: List[str] = Field(default_factory=list)
     # 每个检索器分配的 top-k 配额，e.g. {"vector": 10, "keyword": 10}
     retriever_quotas: Dict[str, int] = Field(default_factory=dict)
@@ -38,7 +37,7 @@ class AgentState(BaseModel):
     
     # Retrieval outputs
     chunks: List[Chunk] = Field(default_factory=list)
-    retrieval_round: int = 0
+    retrieval_round: int = Field(default=0, ge=0)
     
     # Validator outputs
     validation_status: Optional[str] = None
@@ -46,7 +45,6 @@ class AgentState(BaseModel):
     
     # Generator outputs
     answer: Optional[str] = None
-    citations: List[str] = Field(default_factory=list)
     
     # Critic outputs
     critic_score: Optional[float] = Field(None, ge=0.0, le=1.0)
@@ -56,13 +54,12 @@ class AgentState(BaseModel):
 
     # Metadata
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.now)
 
     @field_validator("strategy", mode="before")
     def normalize_strategy(cls, value):
         """Map legacy strategy values onto the new two-state model."""
         if value in (None, ""):
-            return value
+            return None
         if isinstance(value, Strategy):
             return value
         normalized = str(value).strip().lower()

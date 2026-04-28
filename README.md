@@ -115,7 +115,7 @@ flowchart TD
 主要代码：
 
 - [src/server/routes/documents.py](/D:/python/Agent/Multi-Agent-RAG/src/server/routes/documents.py)
-- [src/use_cases/documents.py](/D:/python/Agent/Multi-Agent-RAG/src/use_cases/documents.py)
+- [src/use_cases/document.py](/D:/python/Agent/Multi-Agent-RAG/src/use_cases/documents.py)
 - [src/ingestion/document_loader.py](/D:/python/Agent/Multi-Agent-RAG/src/ingestion/document_loader.py)
 - [src/ingestion/flat_chunker.py](/D:/python/Agent/Multi-Agent-RAG/src/ingestion/flat_chunker.py)
 - [src/ingestion/embedder.py](/D:/python/Agent/Multi-Agent-RAG/src/ingestion/embedder.py)

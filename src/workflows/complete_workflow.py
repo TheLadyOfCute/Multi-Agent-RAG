@@ -1,31 +1,4 @@
-"""
-Complete LangGraph Workflow - All Agents Orchestration (v3).
-
-Pipeline (8 nodes):
-
-    decomposer  �?entry point
-      �? (LLM decides: decompose or pass-through)
-    planner
-      �? (assigns per-sub-query retrieval plans)
-    retrieval  ←─────────────────────────�?      �?                                 �?retry
-    synthesis                            �?      �?                                 �?    reranker  (Cohere / weighted-fallback)�?      �?                                 �?    validator ──(RETRIEVE_MORE)──────────�?      �?PROCEED
-    writer  ←─────────────────�?      �?                      �?regenerate
-    critic ────(APPROVED)───�?END
-
-Changes from v2
----------------
-- Entry point changed from planner to decomposer.
-  Decomposer now makes its own LLM-based decision on whether to split
-  the query; it no longer depends on the strategy set by the planner.
-- Planner moved after decomposer. It reads state.sub_queries and assigns
-  per-sub-query retrieval plans (state.sub_query_plans) in one LLM call.
-- Conditional edge on decomposer (simple/decompose) removed.
-  Fixed edge decomposer �?planner �?retrieval replaces it.
-- RetrievalCoordinator now uses _retrieve_by_sub_query_plans() as the
-  primary path, giving each sub-query its own set of retrievers.
-"""
-
-from typing import Dict, Any, Literal, TypedDict
+from typing import Dict, Any, Literal
 
 from langgraph.graph import StateGraph, END
 
@@ -46,19 +19,19 @@ from src.utils.exceptions import OrchestrationError
 
 class CompleteAgenticRAGWorkflow:
     """
-    Complete LangGraph workflow for the Agentic RAG system (v3).
+    Complete LangGraph workflow for the Agentic RAG system.
 
     Orchestrates all agents in a multi-stage pipeline:
 
-    Stage 1 �?Decomposition + Planning
-        Decomposer  �?Planner
+    Stage 1 Decomposition + Planning
+        Decomposer  Planner
 
-    Stage 2 �?Retrieval + Candidate pool (with validator retry loop)
-        Retrieval Coordinator �?Synthesis �?Reranker �?Validator
+    Stage 2 Retrieval + Candidate pool (with validator retry loop)
+        Retrieval CoordinatorSynthesisRerankerValidator
         (Validator loops back to Retrieval Coordinator if quality gate fails)
 
-    Stage 3 �?Generation (writer self-reflection loop)
-        Writer �?Critic
+    Stage 3Generation (writer self-reflection loop)
+        WriterCritic
 
     Parameters
     ----------
@@ -110,50 +83,47 @@ class CompleteAgenticRAGWorkflow:
                     reranker, validator, writer, critic
 
         Fixed edges (7):
-            decomposer �?planner
-            planner    �?retrieval
-            retrieval  �?synthesis
-            synthesis  �?reranker
-            reranker   �?validator
-            writer     �?critic
-            (validator �?writer via conditional PROCEED)
+            decomposerplanner
+            planner   retrieval
+            retrieval synthesis
+            synthesis reranker
+            reranker  validator
+            writer    critic
+            (validatorwriter via conditional PROCEED)
 
         Conditional edges (2):
-            validator  �?retrieval (retry) | writer (proceed)
-            critic     �?writer (regenerate) | END (finish)
+            validator retrieval (retry) | writer (proceed)
+            critic    writer (regenerate) | END (finish)
         """
-        self.logger.info("Building LangGraph workflow (v3)�?)
+        self.logger.info("Building LangGraph workflow (v3)")
 
-        class WorkflowState(TypedDict):
-            agent_state: AgentState
-
-        graph = StateGraph(WorkflowState)
+        graph = StateGraph(AgentState)
 
         # ── Nodes ──────────────────────────────────────────────────────
-        graph.add_node("decomposer", self._decomposer_node_wrapper)
-        graph.add_node("planner",    self._planner_node_wrapper)
-        graph.add_node("retrieval",  self._retrieval_node_wrapper)
-        graph.add_node("synthesis",  self._synthesis_node_wrapper)
-        graph.add_node("reranker",   self._reranker_node_wrapper)
-        graph.add_node("validator",  self._validator_node_wrapper)
-        graph.add_node("writer",     self._writer_node_wrapper)
-        graph.add_node("critic",     self._critic_node_wrapper)
+        graph.add_node("decomposer", self._decomposer_node)
+        graph.add_node("planner",    self._planner_node)
+        graph.add_node("retrieval",  self._retrieval_node)
+        graph.add_node("synthesis",  self._synthesis_node)
+        graph.add_node("reranker",   self._reranker_node)
+        graph.add_node("validator",  self._validator_node)
+        graph.add_node("writer",     self._writer_node)
+        graph.add_node("critic",     self._critic_node)
 
-        # ── Stage 1: Decomposition �?Planning ─────────────────────────
+        # ── Stage 1: DecompositionPlanning ─────────────────────────
         graph.set_entry_point("decomposer")
         graph.add_edge("decomposer", "planner")
         graph.add_edge("planner",    "retrieval")
 
-        # ── Stage 2: Retrieval �?Synthesis �?Reranker �?Validator ─────
+        # ── Stage 2: RetrievalSynthesisRerankerValidator ─────
         graph.add_edge("retrieval", "synthesis")
         graph.add_edge("synthesis", "reranker")
         graph.add_edge("reranker",  "validator")
 
-        # Validator: retry goes back to retrieval (�?synthesis �?reranker
-        # �?validator again via fixed edges �?no extra wiring needed).
+        # Validator: retry goes back to retrieval ("synthesisreranker
+        #validator again via fixed edgesno extra wiring needed).
         graph.add_conditional_edges(
             "validator",
-            self._should_retry_retrieval_wrapper,
+            self._should_retry_retrieval,
             {
                 "retry":   "retrieval",
                 "proceed": "writer",
@@ -164,7 +134,7 @@ class CompleteAgenticRAGWorkflow:
         graph.add_edge("writer", "critic")
         graph.add_conditional_edges(
             "critic",
-            self._should_regenerate_wrapper,
+            self._should_regenerate,
             {
                 "regenerate": "writer",
                 "finish":     END,
@@ -182,7 +152,7 @@ class CompleteAgenticRAGWorkflow:
     # ------------------------------------------------------------------
 
     def _decomposer_node(self, state: AgentState) -> AgentState:
-        self.logger.info("DECOMPOSER node �?LLM decomposition decision")
+        self.logger.info("DECOMPOSER nodeLLM decomposition decision")
         try:
             result = self.decomposer.run(state)
             meta = result.metadata.get("decomposition", {})
@@ -214,7 +184,7 @@ class CompleteAgenticRAGWorkflow:
             ) from exc
 
     def _planner_node(self, state: AgentState) -> AgentState:
-        self.logger.info("PLANNER node �?per-sub-query retrieval strategy")
+        self.logger.info("PLANNER nodeper-sub-query retrieval strategy")
         try:
             result = self.planner.run(state)
             meta = result.metadata.get("planner", {})
@@ -252,12 +222,12 @@ class CompleteAgenticRAGWorkflow:
         n_plans = len(state.sub_query_plans or [])
         if n_plans:
             self.logger.info(
-                f"RETRIEVAL node (round {state.retrieval_round}) �?"
+                f"RETRIEVAL node (round {state.retrieval_round})"
                 f"{n_plans} sub-query plan(s)"
             )
         else:
             self.logger.info(
-                f"RETRIEVAL node (round {state.retrieval_round}) �?"
+                f"RETRIEVAL node (round {state.retrieval_round})"
                 f"retrievers={state.selected_retrievers}"
             )
         try:
@@ -296,7 +266,7 @@ class CompleteAgenticRAGWorkflow:
             ) from exc
 
     def _synthesis_node(self, state: AgentState) -> AgentState:
-        self.logger.info("SYNTHESIS node �?dedup + candidate pool")
+        self.logger.info("SYNTHESIS nodededup + candidate pool")
         try:
             result = self.synthesis.run(state)
             meta   = result.metadata.get("synthesis", {})
@@ -312,7 +282,7 @@ class CompleteAgenticRAGWorkflow:
                 )
             )
             self.logger.info(
-                f"Synthesis: {meta.get('input_count', 0)} �?"
+                f"Synthesis: {meta.get('input_count', 0)}"
                 f"{meta.get('unique_count', 0)} unique chunks "
                 f"(sources: {meta.get('source_breakdown', {})})"
             )
@@ -326,7 +296,7 @@ class CompleteAgenticRAGWorkflow:
             ) from exc
 
     def _reranker_node(self, state: AgentState) -> AgentState:
-        self.logger.info("RERANKER node �?Cohere rerank / weighted fallback")
+        self.logger.info("RERANKER nodeCohere rerank / weighted fallback")
         try:
             result = self.reranker.run(state)
             meta   = result.metadata.get("reranker", {})
@@ -344,7 +314,7 @@ class CompleteAgenticRAGWorkflow:
                 )
             )
             self.logger.info(
-                f"Reranker: {meta.get('input_count', 0)} �?"
+                f"Reranker: {meta.get('input_count', 0)}"
                 f"{meta.get('final_count', 0)} chunks "
                 f"(cohere={meta.get('used_cohere', False)})"
             )
@@ -491,19 +461,19 @@ class CompleteAgenticRAGWorkflow:
     ) -> Literal["retry", "proceed"]:
         decision = state.validation_status
         if decision == "PROCEED":
-            self.logger.info("Validator PASSED �?proceed to writer")
+            self.logger.info("Validator PASSEDproceed to writer")
             return "proceed"
         if decision == "RETRIEVE_MORE":
             self._expand_retrievers_for_retry(state)
             self.logger.info(
-                f"Validator FAILED �?retry retrieval "
+                f"Validator FAILEDretry retrieval "
                 f"(round {state.retrieval_round}, "
                 f"retrievers={state.selected_retrievers})"
             )
             return "retry"
-        # Unknown status �?default to proceed
+        # Unknown statusdefault to proceed
         self.logger.warning(
-            f"Unknown validation status '{decision}' �?proceeding"
+            f"Unknown validation status '{decision}'proceeding"
         )
         return "proceed"
 
@@ -527,7 +497,7 @@ class CompleteAgenticRAGWorkflow:
         }
 
         self.logger.info(
-            f"Retry retrieval expansion: {before} �?{target_retrievers}, "
+            f"Retry retrieval expansion: {before}{target_retrievers}, "
             f"quotas={state.retriever_quotas}"
         )
 
@@ -539,7 +509,7 @@ class CompleteAgenticRAGWorkflow:
         max_iterations     = self.critic.max_iterations
 
         if decision == CriticDecision.APPROVED:
-            self.logger.info("Critic APPROVED �?finish")
+            self.logger.info("Critic APPROVEDfinish")
             return "finish"
 
         if decision == CriticDecision.REGENERATE:
@@ -551,50 +521,12 @@ class CompleteAgenticRAGWorkflow:
                 state.metadata["regeneration_count"] = regeneration_count + 1
                 return "regenerate"
             self.logger.warning(
-                f"Max iterations reached ({max_iterations}) �?finish"
+                f"Max iterations reached ({max_iterations})finish"
             )
             return "finish"
 
-        self.logger.info(f"Critic decision: {decision.value} �?finish")
+        self.logger.info(f"Critic decision: {decision.value}finish")
         return "finish"
-
-    # ------------------------------------------------------------------
-    # LangGraph node/edge wrappers
-    # ------------------------------------------------------------------
-
-    def _decomposer_node_wrapper(self, state: dict) -> dict:
-        return {"agent_state": self._decomposer_node(state["agent_state"])}
-
-    def _planner_node_wrapper(self, state: dict) -> dict:
-        return {"agent_state": self._planner_node(state["agent_state"])}
-
-    def _retrieval_node_wrapper(self, state: dict) -> dict:
-        return {"agent_state": self._retrieval_node(state["agent_state"])}
-
-    def _synthesis_node_wrapper(self, state: dict) -> dict:
-        return {"agent_state": self._synthesis_node(state["agent_state"])}
-
-    def _reranker_node_wrapper(self, state: dict) -> dict:
-        return {"agent_state": self._reranker_node(state["agent_state"])}
-
-    def _validator_node_wrapper(self, state: dict) -> dict:
-        return {"agent_state": self._validator_node(state["agent_state"])}
-
-    def _writer_node_wrapper(self, state: dict) -> dict:
-        return {"agent_state": self._writer_node(state["agent_state"])}
-
-    def _critic_node_wrapper(self, state: dict) -> dict:
-        return {"agent_state": self._critic_node(state["agent_state"])}
-
-    def _should_retry_retrieval_wrapper(
-        self, state: dict
-    ) -> Literal["retry", "proceed"]:
-        return self._should_retry_retrieval(state["agent_state"])
-
-    def _should_regenerate_wrapper(
-        self, state: dict
-    ) -> Literal["regenerate", "finish"]:
-        return self._should_regenerate(state["agent_state"])
 
     # ------------------------------------------------------------------
     # Public API
@@ -610,16 +542,15 @@ class CompleteAgenticRAGWorkflow:
 
         Returns
         -------
-        AgentState �?final state with answer, citations, and all metadata.
+        AgentStatefinal state with answer, citations, and all metadata.
         """
-        self.logger.info(f"Starting workflow for: {query[:80]}�?)
+        self.logger.info(f"Starting workflow for: {query[:80]}")
         try:
-            initial_state = {"agent_state": AgentState(query=query)}
-            final_state   = self.workflow.invoke(initial_state)
-            result        = final_state["agent_state"]
+            initial_state = AgentState(query=query)
+            result        = self.workflow.invoke(initial_state)
 
             self.logger.info(
-                f"Workflow complete �?"
+                f"Workflow complete"
                 f"retrievers={result.selected_retrievers}, "
                 f"chunks={len(result.chunks)}, "
                 f"rounds={result.retrieval_round}, "
@@ -652,7 +583,7 @@ class CompleteAgenticRAGWorkflow:
         """
         import time
 
-        self.logger.info(f"Starting traced workflow for: {query[:80]}�?)
+        self.logger.info(f"Starting traced workflow for: {query[:80]}")
 
         execution_path: list  = []
         node_timings:   dict  = {}
@@ -725,22 +656,22 @@ class CompleteAgenticRAGWorkflow:
             ],
             "edges": {
                 "fixed": [
-                    "START �?decomposer",
-                    "decomposer �?planner",
-                    "planner �?retrieval",
-                    "retrieval �?synthesis",
-                    "synthesis �?reranker",
-                    "reranker �?validator",
-                    "writer �?critic",
+                    "STARTdecomposer",
+                    "decomposerplanner",
+                    "plannerretrieval",
+                    "retrievalsynthesis",
+                    "synthesisreranker",
+                    "rerankervalidator",
+                    "writercritic",
                 ],
                 "conditional": [
-                    "validator  �?retrieval (retry) | writer (proceed)",
-                    "critic     �?writer (regenerate) | END (finish)",
+                    "validator retrieval (retry) | writer (proceed)",
+                    "critic    writer (regenerate) | END (finish)",
                 ],
             },
             "retry_mechanisms": {
-                "retrieval":  "validator triggers retry �?retrieval �?synthesis �?reranker",
-                "generation": "critic triggers regeneration �?writer",
+                "retrieval":  "validator triggers retryretrievalsynthesisreranker",
+                "generation": "critic triggers regenerationwriter",
             },
             "max_retries": {
                 "retrieval":  self.validator.max_retries,

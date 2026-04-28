@@ -28,35 +28,6 @@ from src.utils.exceptions import AgentExecutionError
 
 
 class BaseAgent(ABC):
-    """
-    Abstract base class for all agents in the system.
-    
-    Provides common functionality:
-    - Standardized execute interface
-    - Automatic metrics tracking
-    - Integrated logging
-    - Error handling
-    - Performance monitoring
-    
-    All agents must implement the execute() method which takes an AgentState
-    and returns an updated AgentState.
-    
-    Attributes:
-        name: Agent identifier (e.g., 'planner', 'validator')
-        version: Agent version for tracking changes
-        logger: Logger instance for this agent
-        metrics: Dictionary tracking agent performance
-        
-    Example:
-        >>> class PlannerAgent(BaseAgent):
-        ...     def __init__(self):
-        ...         super().__init__(name="planner", version="1.0")
-        ...     
-        ...     def execute(self, state: AgentState) -> AgentState:
-        ...         self.log("Analyzing query complexity")
-        ...         state.complexity = 0.5
-        ...         return state
-    """
     
     def __init__(
         self,
@@ -64,17 +35,7 @@ class BaseAgent(ABC):
         version: str = "1.0.0",
         log_level: str = "INFO"
     ):
-        """
-        Initialize base agent.
         
-        Args:
-            name: Agent name/identifier (e.g., 'planner', 'validator')
-            version: Agent version string (default: '1.0.0')
-            log_level: Logging level (default: 'INFO')
-        
-        Example:
-            >>> agent = MyAgent(name="custom_agent", version="2.0")
-        """
         self.name = name
         self.version = version
         
@@ -99,58 +60,10 @@ class BaseAgent(ABC):
     
     @abstractmethod
     def execute(self, state: AgentState) -> AgentState:
-        """
-        Execute agent logic and return updated state.
-        
-        This is the main method that must be implemented by all agents.
-        It receives the current state, processes it, and returns the
-        updated state.
-        
-        Args:
-            state: Current agent state
-        
-        Returns:
-            Updated agent state
-        
-        Raises:
-            AgentExecutionError: If execution fails
-        
-        Note:
-            This method is abstract and must be implemented by subclasses.
-            Attempting to instantiate BaseAgent directly will raise TypeError.
-        
-        Example:
-            >>> def execute(self, state: AgentState) -> AgentState:
-            ...     # Your agent logic here
-            ...     state.metadata['processed_by'] = self.name
-            ...     return state
-        """
         pass
     
     def run(self, state: AgentState) -> AgentState:
-        """
-        Execute agent with automatic metrics tracking and error handling.
         
-        This is a wrapper around execute() that handles:
-        - Timing measurement
-        - Metrics updates
-        - Error handling
-        - Logging
-        
-        Users should call run() instead of execute() directly.
-        
-        Args:
-            state: Current agent state
-        
-        Returns:
-            Updated agent state
-        
-        Raises:
-            AgentExecutionError: If execution fails after error handling
-        
-        Example:
-            >>> result = agent.run(state)
-        """
         start_time = time.time()
         
         try:

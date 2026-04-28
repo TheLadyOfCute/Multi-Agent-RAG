@@ -13,7 +13,6 @@ def create_full_rag_workflow(
 ) -> "CompleteAgenticRAGWorkflow":
     # This factory only wires agents into a runnable workflow.
     from langchain_openai import ChatOpenAI
-
     from src.agents.critic import CriticAgent
     from src.agents.planner import PlannerAgent
     from src.agents.query_decomposer import QueryDecomposer
@@ -37,15 +36,11 @@ def create_full_rag_workflow(
 
     vector_agent = VectorSearchAgent(vector_store=vector_store, embedder=embedder)
     keyword_agent = KeywordSearchAgent(vector_store=vector_store, bm25_index=bm25_index)
-    graph_agent = (
-        GraphSearchAgent(knowledge_graph=knowledge_graph, vector_store=vector_store)
-        if knowledge_graph
-        else None
-    )
+    graph_agent = GraphSearchAgent(knowledge_graph=knowledge_graph, vector_store=vector_store)
 
     return CompleteAgenticRAGWorkflow(
         planner=PlannerAgent(llm=llm),
-        decomposer=QueryDecomposer(),
+        decomposer=QueryDecomposer(llm=llm),
         coordinator=RetrievalCoordinator(
             vector_agent=vector_agent,
             keyword_agent=keyword_agent,

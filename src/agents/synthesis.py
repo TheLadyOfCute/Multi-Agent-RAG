@@ -23,47 +23,12 @@ from src.utils.retrieval_debug import chunk_dedup_key, merge_retriever_sources
 
 
 class SynthesisAgent(BaseAgent):
-    """
-    Synthesis Agent — Deduplication and candidate pool construction.
-
-    Receives all chunks from the RetrievalCoordinator (potentially
-    produced by multiple retrievers: vector, keyword, graph) and
-    returns a deduplicated candidate pool with source information
-    intact.
-
-    Ranking / reranking is intentionally NOT performed here; that is
-    the responsibility of the separate RerankerAgent that follows this
-    node in the LangGraph workflow.
-
-    Attributes
-    ----------
-    use_reranker : bool
-        Deprecated parameter kept for backward compatibility.
-        Has no effect — reranking is now done by RerankerAgent.
-
-    Example
-    -------
-    >>> agent = SynthesisAgent()
-    >>> state = AgentState(query="query", chunks=[...])
-    >>> result = agent.run(state)
-    >>> # result.chunks contains deduplicated pool (no top-k truncation)
-    """
 
     def __init__(
         self,
         top_k: int = None,             # kept for compat; unused
-        vector_weight: float = None,   # kept for compat; unused
-        keyword_weight: float = None,  # kept for compat; unused
-        use_reranker: bool = False,    # deprecated; has no effect
     ):
         super().__init__(name="synthesis", version="2.0.0")
-
-        if use_reranker:
-            self.log(
-                "use_reranker=True is deprecated on SynthesisAgent. "
-                "Reranking is now handled by the standalone RerankerAgent node.",
-                level="warning",
-            )
 
         settings = get_settings()
         # Store top_k only for metadata reporting; actual truncation

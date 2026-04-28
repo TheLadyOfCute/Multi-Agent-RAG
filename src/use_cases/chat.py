@@ -10,7 +10,7 @@ from src.cache.redis_cache import RedisCacheService
 from src.graph.neo4j_helpers import close_neo4j_store, open_neo4j_store
 from src.storage.factory import close_vector_store, open_vector_store
 from src.utils.logger import setup_logger
-
+from src.utils.persistence_restore import restore_or_rebuild_bm25
 logger = setup_logger("chat_use_cases")
 
 
@@ -64,6 +64,8 @@ class RunChatQueryUseCase:
             self.runtime_state.messages.append({"role": "user", "content": query})
 
         def runner(task_id: str, update_task: Callable[..., None]) -> dict[str, Any]:
+            # append_user=False 因为在提交任务时已经把用户消息添加到会话历史了，
+            # 所以这里就不需要再添加一次了，避免重复。
             return self.process_query(query, append_user=False, task_id=task_id, update_task=update_task)
 
         return self.task_registry.submit_task("chat_query", runner)
@@ -72,7 +74,7 @@ class RunChatQueryUseCase:
         self,
         query: str,
         *,
-        append_user: bool = True,
+        append_user: bool = True,# 是否把用户问题写入会话历史
         task_id: str | None = None,
         update_task: Callable[..., None] | None = None,
     ) -> dict[str, Any]:
@@ -92,12 +94,15 @@ class RunChatQueryUseCase:
             documents_snapshot = [dict(doc) for doc in self.runtime_state.documents]
 
         start = time.time()
-        knowledge_state_token = self.cache_service.build_knowledge_state_token(documents_snapshot)
+        # 获取知识库状态hash
+        knowledge_state_hash = self.cache_service.build_knowledge_state_token(documents_snapshot)
         progress(0.08, "accepted", "query accepted")
 
-        cached_payload = self.cache_service.get_answer(query, knowledge_state_token)
+        cached_payload = self.cache_service.get_answer(query, knowledge_state_hash)
+        #缓存命中，直接返回答案
         if cached_payload is not None:
             assistant_message = dict(cached_payload.get("message", {}))
+            # 计算缓存命中的查询耗时
             latency = time.time() - start
             with self.runtime_state.lock:
                 self.runtime_state.messages.append(assistant_message)
@@ -121,14 +126,14 @@ class RunChatQueryUseCase:
             progress(0.18, "opening_stores", "opening vector store and graph store")
             vector_store = open_vector_store()
             neo4j_store = open_neo4j_store() if use_neo4j else None
-
+            bm25_index = restore_or_rebuild_bm25(vector_store, index_path="data/bm25_index.pkl")
             progress(0.32, "initializing_workflow", "initializing multi-agent workflow")
             from src.workflows.factory import create_full_rag_workflow
 
             workflow = create_full_rag_workflow(
                 vector_store=vector_store,
                 embedder=self.embedder,
-                bm25_index=None,
+                bm25_index=bm25_index,
                 knowledge_graph=neo4j_store,
             )
 
@@ -150,9 +155,9 @@ class RunChatQueryUseCase:
             "workflow_metadata": metadata,
         }
         latency = time.time() - start
-        self.cache_service.set_answer(
+        self.cache_service.set_answer(#保存query到缓存
             query,
-            knowledge_state_token,
+            knowledge_state_hash,
             {
                 "message": assistant_message,
                 "chunks_retrieved": len(result.chunks),
