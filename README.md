@@ -88,6 +88,7 @@ sequenceDiagram
 
 ```text
 POST /api/documents
+Supported upload formats: pdf, docx, txt.
 ```
 
 ```mermaid
@@ -315,6 +316,7 @@ http://127.0.0.1:5173
 
 ```text
 POST   /api/documents             上传文档
+      (only supports pdf/docx/txt; json/jsonl returns 400)
 DELETE /api/documents/{name}      删除文档
 POST   /api/data/clear            清空数据
 POST   /api/chat/messages         同步问答

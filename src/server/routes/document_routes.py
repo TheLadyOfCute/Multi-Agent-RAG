@@ -40,7 +40,7 @@ async def upload_document(file: UploadFile = File(...)) -> dict[str, str]:
     # 先将上传文件保存到本地临时或持久目录
     saved_path = get_save_upload_use_case().execute(file.filename or "upload.txt", file.file)
 
-    # 定义后台任务执行逻辑
+    # 定义后台任务
     def runner(task_id, update_task):
         # 执行较重的文档处理流程，并通过 update_task 回写进度
         return get_process_uploaded_document_use_case().execute(saved_path, update_task, task_id)

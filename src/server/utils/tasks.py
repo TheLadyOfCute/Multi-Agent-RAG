@@ -52,6 +52,7 @@ class TaskRegistry:
         }
 
         # 将任务提交到线程池中异步执行
+        # submit(fn, *args, **kwargs)第一个为函数，后面为函数参数
         self._executor.submit(self._run_task, task_id, runner)
 
         # 返回任务 ID，供前端轮询状态

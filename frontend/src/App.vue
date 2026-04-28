@@ -324,6 +324,7 @@ onMounted(async () => {
         <Upload :size="18" />
         <span>上传文档</span>
         <input type="file" accept=".pdf,.docx,.txt" @change="onUploadDocument" />
+        <small>PDF / DOCX / TXT</small>
       </label>
 
       <div v-if="uploadTask && uploadTask.status !== 'done'" class="task-strip">
@@ -625,3 +626,4 @@ onMounted(async () => {
     </section>
   </main>
 </template>
+

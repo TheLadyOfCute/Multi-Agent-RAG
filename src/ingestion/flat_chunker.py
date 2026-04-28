@@ -19,7 +19,6 @@ class FlatChunker:
     Strategy:
     1. Split the full text into chunks of fixed token length
     2. Apply optional overlap between adjacent chunks
-    3. Do not create parent-child relationships
     """
 
     def __init__(

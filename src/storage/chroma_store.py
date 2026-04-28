@@ -23,11 +23,11 @@ class ChromaVectorStore:
         self.persist_directory = persist_directory
         os.makedirs(persist_directory, exist_ok=True)
 
-        self.client = chromadb.PersistentClient(
+        self.client = chromadb.PersistentClient(#本地持久化 Chroma
             path=persist_directory,
             settings=Settings(
-                anonymized_telemetry=False,
-                allow_reset=True,
+                anonymized_telemetry=False,#静止匿名使用统计
+                allow_reset=True,#清空数据库
             ),
         )
 
@@ -75,29 +75,40 @@ class ChromaVectorStore:
             metadatas=metadatas,
         )
 
+    # 根据查询向量执行相似度检索
     def search(self, query_embedding: List[float], top_k: int = 5) -> List[Dict[str, Any]]:
         """Search flat chunks by vector similarity."""
+
+        # 输出检索参数，便于调试召回结果
         print(f"\nSearching ChromaDB (top_k={top_k})...")
 
+        # 调用 ChromaDB 查询接口获取相似 chunk
         results = self.collection.query(
             query_embeddings=[query_embedding],
             n_results=top_k,
             include=["documents", "metadatas", "distances"],
         )
 
+        # 没有检索结果时返回空列表
         if not results["ids"][0]:
             print("   No results found")
             return []
 
+        # 输出命中数量
         print(f"   Found {len(results['ids'][0])} results")
 
+        # 将 ChromaDB 返回结果转换为统一检索结果格式
         formatted_results = []
         for i, chunk_id in enumerate(results["ids"][0]):
+            # 清理并补全元数据来源字段
             metadata = self._clean_metadata(dict(results["metadatas"][0][i] or {}))
             metadata.setdefault("source", "vector")
+
+            # 将距离值转换为相似度分数
             distance = results["distances"][0][i]
             similarity = 1 / (1 + distance)
 
+            # 组装单条检索结果
             formatted_results.append(
                 {
                     "chunk_id": chunk_id,
@@ -106,8 +117,11 @@ class ChromaVectorStore:
                     "metadata": metadata,
                 }
             )
+
+            # 打印当前排名结果，便于检索调试
             print(format_ranked_chunk_line(i + 1, formatted_results[-1]))
 
+        # 返回格式化后的检索结果
         return formatted_results
 
     def get_chunks_by_ids(self, chunk_ids: List[str]) -> List[Dict[str, Any]]:

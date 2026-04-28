@@ -48,6 +48,7 @@ class EmbeddingGenerator:
         self.total_embeddings = 0
         self.total_tokens = 0
 
+     # 批量生成文本嵌入，并优先使用缓存
     def generate(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings for texts, reusing Redis cache when available."""
         if not texts:
@@ -56,9 +57,10 @@ class EmbeddingGenerator:
         self.logger.info(f"Generating embeddings for {len(texts)} text(s)")
 
         embeddings: list[list[float] | None] = [None] * len(texts)
-        texts_to_generate: list[str] = []
-        indices_to_generate: list[int] = []
+        texts_to_generate: list[str] = []# 保存缓存未命中的文本
+        indices_to_generate: list[int] = []# 保存缓存未命中文本在原始列表中的下标
 
+        # 遍历输入文本，优先读取缓存
         for i, text in enumerate(texts):
             cached = self.cache_service.get_embedding(text) if self.cache_service else None
             if cached is not None:
@@ -66,7 +68,7 @@ class EmbeddingGenerator:
             else:
                 texts_to_generate.append(text)
                 indices_to_generate.append(i)
-
+        # 按配置的 batch_size 分批生成未命中的嵌入
         for i in range(0, len(texts_to_generate), self.batch_size):
             batch = texts_to_generate[i : i + self.batch_size]
             batch_num = (i // self.batch_size) + 1
@@ -92,7 +94,8 @@ class EmbeddingGenerator:
         resolved_embeddings = [embedding for embedding in embeddings if embedding is not None]
         self.logger.info(f"Generated {len(resolved_embeddings)} embeddings (cumulative: {self.total_embeddings})")
         return resolved_embeddings
-
+    
+    # 调用模型接口生成一个批次的嵌入
     def _generate_batch(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings for a batch of texts."""
         max_retries = 3
