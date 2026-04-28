@@ -190,7 +190,6 @@ class CompleteAgenticRAGWorkflow:
         self.logger.info("PLANNER nodeper-sub-query retrieval strategy")
         try:
             result = self.planner.run(state)
-            meta = result.metadata.get("planner", {})
             plans = result.sub_query_plans or []
             self.logger.info(
                 format_stage_trace(

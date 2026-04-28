@@ -210,6 +210,7 @@ class PlannerAgent(BaseAgent):
 只输出 JSON 数组，不要任何解释或代码块标记，格式如下:
 {example_out}"""
 
+    # 解析 LLM 返回的计划 JSON，并转换为校验后的计划列表
     def _parse_plans(
         self, raw: str, sub_queries: List[str]
     ) -> List[Dict[str, Any]]:
@@ -219,26 +220,37 @@ class PlannerAgent(BaseAgent):
         Falls back to rule-based plans for individual entries that
         cannot be parsed.
         """
-        # Strip markdown fences
+
+        # 去除 LLM 返回内容中可能包含的 markdown 代码块标记
         cleaned = re.sub(r"```(?:json)?", "", raw).strip().strip("`")
 
-        # Find the JSON array
+        # 从清理后的文本中提取 JSON 数组部分
         match = re.search(r"\[.*\]", cleaned, re.DOTALL)
+
+        # 如果没有找到 JSON 数组，则直接抛出异常
         if not match:
             raise ValueError(f"No JSON array in LLM response: {raw[:120]}")
 
+        # 将匹配到的 JSON 字符串解析为 Python 对象
         raw_list = json.loads(match.group())
+
+        # 校验解析结果必须是列表
         if not isinstance(raw_list, list):
             raise ValueError("LLM response is not a JSON array")
 
+        # 存放最终生成的计划结果
         plans: List[Dict[str, Any]] = []
 
+        # 遍历每个子查询，并为其生成对应的检索计划
         for i, sub_query in enumerate(sub_queries):
-            # Try to find the matching entry by position or query text
+            # 默认当前计划项为空
             entry = None
+
+            # 优先按位置从 LLM 返回列表中取对应计划项
             if i < len(raw_list):
                 entry = raw_list[i]
 
+            # 如果当前计划项不是字典，使用兜底规则生成计划
             if not isinstance(entry, dict):
                 self.log(
                     f"Plan entry {i} is not a dict, using fallback",
@@ -247,35 +259,52 @@ class PlannerAgent(BaseAgent):
                 plans.append(self._fallback_single_plan(sub_query))
                 continue
 
-            # Validate retrievers
+            # 读取当前计划项中的 retrievers 字段
             raw_retrievers = entry.get("retrievers", [])
+
+            # 如果 retrievers 是字符串，则转换成列表统一处理
             if isinstance(raw_retrievers, str):
                 raw_retrievers = [raw_retrievers]
+
+            # 清洗并校验 retriever 名称，只保留合法的检索器
             retrievers = [
                 r.strip().lower()
                 for r in raw_retrievers
                 if r.strip().lower() in _VALID_RETRIEVERS
             ]
-            if not retrievers:
-                retrievers = ["vector"]  # safe default
 
-            # Validate quotas
+            # 如果没有合法检索器，则使用 vector 作为安全默认值
+            if not retrievers:
+                retrievers = ["vector"]
+
+            # 读取当前计划项中的 quotas 字段
             raw_quotas = entry.get("quotas", {})
+
+            # 存放每个检索器对应的配额
             quotas: Dict[str, int] = {}
+
+            # 为每个检索器校验并生成检索配额
             for name in retrievers:
+                # 获取当前检索器配额，不存在则使用默认配额
                 q = raw_quotas.get(name, _DEFAULT_QUOTA)
+
+                # 将配额转换为整数，转换失败则使用默认配额
                 try:
                     q = int(q)
                 except (TypeError, ValueError):
                     q = _DEFAULT_QUOTA
+
+                # 将配额限制在允许范围内
                 quotas[name] = max(1, min(q, _MAX_QUOTA))
 
+            # 保存当前子查询对应的完整检索计划
             plans.append({
-                "query":     sub_query,
+                "query":      sub_query,
                 "retrievers": retrievers,
-                "quotas":    quotas,
+                "quotas":     quotas,
             })
 
+        # 返回所有子查询对应的计划列表
         return plans
 
     # ------------------------------------------------------------------
