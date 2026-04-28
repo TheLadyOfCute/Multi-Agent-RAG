@@ -80,6 +80,7 @@ class ChunkingAdvisorAgent:
         self.preview_tokens = preview_tokens
         self.settings       = get_settings()
         self.logger         = setup_logger("agent.chunking_advisor", level="INFO")
+        #OpenAI 的 tiktoken 编码器，用于计算 token 数量
         self._encoder       = tiktoken.get_encoding("cl100k_base")
 
         self.logger.info(
@@ -158,11 +159,28 @@ class ChunkingAdvisorAgent:
         messages = [
             SystemMessage(content=_SYSTEM_PROMPT),
             HumanMessage(
-                content=(
-                    "Below is the beginning of a document. "
-                    "Please recommend chunk_size and chunk_overlap.\n\n"
-                    f"---\n{preview}\n---"
-                )
+                content = (
+                "You are helping configure text chunking for a document retrieval pipeline.\n\n"
+                "Given the beginning of a document, recommend suitable values for "
+                "`chunk_size` and `chunk_overlap`.\n\n"
+                "Assume:\n"
+                "- `chunk_size` is measured in tokens.\n"
+                "- `chunk_overlap` is measured in tokens.\n"
+                "- The goal is to balance semantic coherence, retrieval accuracy, and index efficiency.\n"
+                "- Prefer larger chunks for dense technical/legal/academic text.\n"
+                "- Prefer smaller chunks for FAQs, bullet-heavy content, tables, or loosely structured notes.\n"
+                "- Use overlap to preserve context across chunk boundaries, but avoid excessive duplication.\n\n"
+                "Return only valid JSON in this format:\n"
+                "{\n"
+                '  "chunk_size": <integer>,\n'
+                '  "chunk_overlap": <integer>,\n'
+                '  "reason": "<brief explanation>"\n'
+                "}\n\n"
+                "Document preview:\n"
+                "---\n"
+                f"{preview}\n"
+                "---"
+            )
             ),
         ]
         response = self.llm.invoke(messages)

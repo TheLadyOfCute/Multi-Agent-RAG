@@ -494,6 +494,13 @@ onMounted(async () => {
       </section>
 
       <section v-else-if="activeTab === 'evaluation'" class="panel stack">
+        <div class="section-heading">
+          <h2>RAGAS 评估</h2>
+        </div>
+        <p class="hint">
+          用 RAGAS 对“检索 + 回答”质量打分（0～1，越高越好）：Faithfulness（回答是否忠于上下文）、Relevancy（是否贴合问题）、
+          Context Precision（检索是否精确）、Context Recall（检索是否覆盖关键信息）。
+        </p>
         <div class="toolbar">
           <label class="secondary-button">
             <Upload :size="15" /> 上传问题

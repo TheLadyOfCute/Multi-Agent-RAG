@@ -43,10 +43,11 @@ def main() -> None:
     logger = logging.getLogger("uvicorn.error")
     logger.info("Starting API (bind=%s:%s reload=%s)", settings.api_host, settings.api_port, settings.api_reload)
     uvicorn.run(
-        "src.app.main:app",
+        "src.server.main:app",
         host=settings.api_host,
         port=settings.api_port,
         reload=settings.api_reload,
+        access_log=False,
     )
 
 

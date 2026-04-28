@@ -187,7 +187,7 @@ class ProcessUploadedDocumentUseCase:
             chunks = self._build_chunks(doc, filename, file_ext, chunk_size, chunk_overlap)
             progress(0.6, "embedding", f"{len(chunks)} chunks")
 
-            # embedding 后的 chunk 才能进入向量检索链路。
+            # chunk 才能进入向量检索链路。
             self._embed_chunks(chunks, self.embedder)
             progress(0.72, "graph", "Building graph")
             graph_available = self._build_graph_best_effort(chunks)

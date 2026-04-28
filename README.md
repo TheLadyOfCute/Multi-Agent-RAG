@@ -34,8 +34,9 @@
 
 ```text
 src/
-  app/              FastAPI 启动、依赖装配、运行状态、后台任务、路径和环境变量
-  api/              HTTP 路由和请求/响应模型
+  server/           FastAPI 应用入口、HTTP 路由、请求/响应模型、依赖装配与运行时状态
+    routes/         HTTP 路由（/api/*）
+    utils/          后端运行时/依赖注入/生命周期/任务等基础设施
   cache/            Redis 缓存服务
   use_cases/        应用用例：聊天、文档、评估、系统状态
   agents/           多智能体角色
@@ -75,10 +76,10 @@ sequenceDiagram
 
 关键文件：
 
-- [src/app/main.py](/D:/python/Agent/Multi-Agent-RAG/src/app/main.py)：FastAPI 应用入口。
-- [src/app/lifespan.py](/D:/python/Agent/Multi-Agent-RAG/src/app/lifespan.py)：启动和关闭时的恢复逻辑。
-- [src/app/dependencies.py](/D:/python/Agent/Multi-Agent-RAG/src/app/dependencies.py)：全局依赖和用例装配。
-- [src/app/state.py](/D:/python/Agent/Multi-Agent-RAG/src/app/state.py)：运行时状态。
+- [src/server/main.py](/D:/python/Agent/Multi-Agent-RAG/src/server/main.py)：FastAPI 应用入口。
+- [src/server/utils/lifespan.py](/D:/python/Agent/Multi-Agent-RAG/src/server/utils/lifespan.py)：启动和关闭时的恢复逻辑。
+- [src/server/utils/dependencies.py](/D:/python/Agent/Multi-Agent-RAG/src/server/utils/dependencies.py)：全局依赖和用例装配。
+- [src/server/utils/state.py](/D:/python/Agent/Multi-Agent-RAG/src/server/utils/state.py)：运行时状态。
 - [src/cache/redis_cache.py](/D:/python/Agent/Multi-Agent-RAG/src/cache/redis_cache.py)：Redis 缓存服务。
 
 ## 上传文件流程
@@ -112,7 +113,7 @@ flowchart TD
 
 主要代码：
 
-- [src/api/routes/documents.py](/D:/python/Agent/Multi-Agent-RAG/src/api/routes/documents.py)
+- [src/server/routes/documents.py](/D:/python/Agent/Multi-Agent-RAG/src/server/routes/documents.py)
 - [src/use_cases/documents.py](/D:/python/Agent/Multi-Agent-RAG/src/use_cases/documents.py)
 - [src/ingestion/document_loader.py](/D:/python/Agent/Multi-Agent-RAG/src/ingestion/document_loader.py)
 - [src/ingestion/flat_chunker.py](/D:/python/Agent/Multi-Agent-RAG/src/ingestion/flat_chunker.py)
@@ -161,7 +162,7 @@ flowchart TD
 
 主要代码：
 
-- [src/api/routes/chat.py](/D:/python/Agent/Multi-Agent-RAG/src/api/routes/chat.py)
+- [src/server/routes/chat.py](/D:/python/Agent/Multi-Agent-RAG/src/server/routes/chat.py)
 - [src/use_cases/chat.py](/D:/python/Agent/Multi-Agent-RAG/src/use_cases/chat.py)
 - [src/workflows/factory.py](/D:/python/Agent/Multi-Agent-RAG/src/workflows/factory.py)
 - [src/workflows/complete_workflow.py](/D:/python/Agent/Multi-Agent-RAG/src/workflows/complete_workflow.py)
@@ -193,7 +194,7 @@ flowchart TD
 
 主要代码：
 
-- [src/api/routes/evaluation.py](/D:/python/Agent/Multi-Agent-RAG/src/api/routes/evaluation.py)
+- [src/server/routes/evaluation.py](/D:/python/Agent/Multi-Agent-RAG/src/server/routes/evaluation.py)
 - [src/use_cases/evaluation.py](/D:/python/Agent/Multi-Agent-RAG/src/use_cases/evaluation.py)
 - [src/agents/ragas_evaluation_agent.py](/D:/python/Agent/Multi-Agent-RAG/src/agents/ragas_evaluation_agent.py)
 - [src/evaluation/ragas_evaluator.py](/D:/python/Agent/Multi-Agent-RAG/src/evaluation/ragas_evaluator.py)
@@ -280,13 +281,13 @@ CACHE_TTL=3600
 推荐：
 
 ```bash
-uvicorn src.app.main:app --reload
+uvicorn src.server.main:app --reload --no-access-log
 ```
 
 如果希望用模块方式启动，也可以使用：
 
 ```bash
-python -m src.app.main
+python -m src.server.main
 ```
 
 检查接口：
@@ -335,9 +336,9 @@ python scripts/generate_test_questions.py
 
 ## 推荐学习顺序
 
-1. [src/app/main.py](/D:/python/Agent/Multi-Agent-RAG/src/app/main.py)：看后端如何启动。
-2. [src/app/dependencies.py](/D:/python/Agent/Multi-Agent-RAG/src/app/dependencies.py)：看依赖如何被创建和注入。
-3. [src/api/routes](/D:/python/Agent/Multi-Agent-RAG/src/api/routes)：看前端请求如何进入后端。
+1. [src/server/main.py](/D:/python/Agent/Multi-Agent-RAG/src/server/main.py)：看后端如何启动。
+2. [src/server/utils/dependencies.py](/D:/python/Agent/Multi-Agent-RAG/src/server/utils/dependencies.py)：看依赖如何被创建和注入。
+3. [src/server/routes](/D:/python/Agent/Multi-Agent-RAG/src/server/routes)：看前端请求如何进入后端。
 4. [src/use_cases](/D:/python/Agent/Multi-Agent-RAG/src/use_cases)：看每个用户意图如何被执行。
 5. [src/cache/redis_cache.py](/D:/python/Agent/Multi-Agent-RAG/src/cache/redis_cache.py)：看 Redis 缓存如何工作。
 6. [src/workflows](/D:/python/Agent/Multi-Agent-RAG/src/workflows)：看多 Agent RAG 如何编排。
@@ -347,8 +348,8 @@ python scripts/generate_test_questions.py
 
 ```bash
 pytest tests -q
-python -c "import src.app.main as m; print(type(m.app).__name__)"
-python -c "from src.app.dependencies import get_runtime_state; print(type(get_runtime_state()).__name__)"
+python -c "import src.server.main as m; print(type(m.app).__name__)"
+python -c "from src.server.utils.dependencies import get_runtime_state; print(type(get_runtime_state()).__name__)"
 python -c "from src.workflows.factory import create_full_rag_workflow; print(create_full_rag_workflow.__name__)"
 python -m src.graph.build_neo4j_graph --help
 ```
