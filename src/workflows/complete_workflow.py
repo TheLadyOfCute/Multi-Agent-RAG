@@ -1,4 +1,4 @@
-from typing import Dict, Any, Literal
+from typing import Dict, Any, Literal, TypeAlias
 
 from langgraph.graph import StateGraph, END
 
@@ -15,6 +15,9 @@ from src.utils.logger import setup_logger
 from src.utils.workflow_trace import format_stage_trace, summarize_chunks
 from src.utils.retrieval_debug import format_ranked_chunk_line
 from src.utils.exceptions import OrchestrationError
+
+
+WorkflowState: TypeAlias = Dict[str, Any]
 
 
 class CompleteAgenticRAGWorkflow:
@@ -532,7 +535,7 @@ class CompleteAgenticRAGWorkflow:
     # Public API
     # ------------------------------------------------------------------
 
-    def run(self, query: str) -> AgentState:
+    def run(self, query: str) -> WorkflowState:
         """
         Execute the full pipeline for a user query.
 
@@ -542,20 +545,21 @@ class CompleteAgenticRAGWorkflow:
 
         Returns
         -------
-        AgentStatefinal state with answer, citations, and all metadata.
+        Final workflow state as a dict.
         """
         self.logger.info(f"Starting workflow for: {query[:80]}")
         try:
             initial_state = AgentState(query=query)
-            result        = self.workflow.invoke(initial_state)
+            raw_result = self.workflow.invoke(initial_state)
+            result = self._normalize_workflow_result(raw_result)
 
             self.logger.info(
                 f"Workflow complete"
-                f"retrievers={result.selected_retrievers}, "
-                f"chunks={len(result.chunks)}, "
-                f"rounds={result.retrieval_round}, "
-                f"critic_score={result.critic_score:.2f}, "
-                f"regenerations={result.metadata.get('regeneration_count', 0)}"
+                f"retrievers={result.get('selected_retrievers')}, "
+                f"chunks={len(result.get('chunks') or [])}, "
+                f"rounds={result.get('retrieval_round')}, "
+                f"critic_score={self._format_optional_score(result.get('critic_score'))}, "
+                f"regenerations={result.get('metadata', {}).get('regeneration_count', 0)}"
             )
             return result
 
@@ -568,6 +572,43 @@ class CompleteAgenticRAGWorkflow:
                 message=f"Workflow execution failed: {exc}",
                 details={"query": query},
             ) from exc
+
+    @staticmethod
+    def _normalize_workflow_result(result: Any) -> WorkflowState:
+        if isinstance(result, dict):
+            return dict(result)
+
+        if isinstance(result, AgentState):
+            return {
+                "query": result.query,
+                "complexity": result.complexity,
+                "strategy": result.strategy,
+                "selected_retrievers": result.selected_retrievers,
+                "retriever_quotas": result.retriever_quotas,
+                "sub_queries": result.sub_queries,
+                "sub_query_plans": result.sub_query_plans,
+                "chunks": result.chunks,
+                "retrieval_round": result.retrieval_round,
+                "validation_status": result.validation_status,
+                "validation_score": result.validation_score,
+                "answer": result.answer,
+                "critic_score": result.critic_score,
+                "critic_feedback": result.critic_feedback,
+                "critic_scores": result.critic_scores,
+                "critic_decision": result.critic_decision,
+                "metadata": result.metadata,
+            }
+
+        raise TypeError(f"Unsupported workflow result type: {type(result).__name__}")
+
+    @staticmethod
+    def _format_optional_score(value: Any) -> str:
+        if value is None:
+            return "n/a"
+        try:
+            return f"{float(value):.2f}"
+        except (TypeError, ValueError):
+            return str(value)
 
     def run_with_trace(self, query: str) -> Dict[str, Any]:
         """

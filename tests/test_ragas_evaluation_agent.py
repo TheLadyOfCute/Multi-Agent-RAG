@@ -13,24 +13,34 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_module():
-    sys.modules["src.evaluation.ragas_evaluator"] = types.SimpleNamespace(
-        METRIC_NAMES=(
-            "faithfulness",
-            "answer_relevancy",
-            "context_precision",
-            "context_recall",
+    replacements = {
+        "src.evaluation.ragas_evaluator": types.SimpleNamespace(
+            METRIC_NAMES=(
+                "faithfulness",
+                "answer_relevancy",
+                "context_precision",
+                "context_recall",
+            ),
+            RAGASEvaluator=object,
         ),
-        RAGASEvaluator=object,
-    )
-    sys.modules["src.utils.logger"] = types.SimpleNamespace(
-        setup_logger=lambda *args, **kwargs: None,
-    )
-
+        "src.utils.logger": types.SimpleNamespace(
+            setup_logger=lambda *args, **kwargs: None,
+        ),
+    }
+    originals = {name: sys.modules.get(name) for name in replacements}
+    sys.modules.update(replacements)
     path = ROOT / "src" / "agents" / "ragas_evaluation_agent.py"
     spec = importlib.util.spec_from_file_location("test_ragas_agent_module", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        for name, original in originals.items():
+            if original is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = original
     return module
 
 
@@ -59,16 +69,16 @@ class FakeWorkflow:
             chunk_id="chunk-fallback",
             metadata={},
         )
-        return SimpleNamespace(
-            answer=f"answer for {question}",
-            chunks=[chunk],
-            selected_retrievers=["hybrid"],
-            retriever_quotas={"dense": 4},
-            retrieval_round=1,
-            validation_score=0.8,
-            critic_score=0.9,
-            metadata={"trace_id": "trace-1"},
-        )
+        return {
+            "answer": f"answer for {question}",
+            "chunks": [chunk],
+            "selected_retrievers": ["hybrid"],
+            "retriever_quotas": {"dense": 4},
+            "retrieval_round": 1,
+            "validation_score": 0.8,
+            "critic_score": 0.9,
+            "metadata": {"trace_id": "trace-1"},
+        }
 
 
 class FakeEvaluator:

@@ -148,19 +148,19 @@ class RagasEvaluationAgent:
         }
         try:
             state = self.workflow.run(item["question"])
-            chunks = list(getattr(state, "chunks", []) or [])
+            chunks = list(state.get("chunks") or [])
             base.update(
                 {
-                    "response": getattr(state, "answer", "") or "",
+                    "response": str(state.get("answer") or ""),
                     "contexts": [getattr(chunk, "text", "") for chunk in chunks],
                     "retrieved_chunk_ids": [chunk_id_for_evaluation(chunk) for chunk in chunks],
                     "retrieval_metadata": {
-                        "selected_retrievers": getattr(state, "selected_retrievers", []),
-                        "retriever_quotas": getattr(state, "retriever_quotas", {}),
-                        "retrieval_round": getattr(state, "retrieval_round", None),
-                        "validation_score": getattr(state, "validation_score", None),
-                        "critic_score": getattr(state, "critic_score", None),
-                        "metadata": getattr(state, "metadata", {}),
+                        "selected_retrievers": state.get("selected_retrievers", []),
+                        "retriever_quotas": state.get("retriever_quotas", {}),
+                        "retrieval_round": state.get("retrieval_round"),
+                        "validation_score": state.get("validation_score"),
+                        "critic_score": state.get("critic_score"),
+                        "metadata": state.get("metadata", {}),
                     },
                 }
             )

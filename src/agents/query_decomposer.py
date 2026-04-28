@@ -30,19 +30,7 @@ class QueryDecomposerError(AgenticRAGException):
 
 
 class QueryDecomposer(BaseAgent):
-    """
-    Query Decomposer — decides autonomously whether to split a query.
 
-    Decision flow
-    -------------
-    1. ``_should_decompose_with_llm(query)``
-       → LLM returns {"need_decompose": bool, "reason": str}
-    2. If need_decompose → ``_decompose_multihop(query)`` (existing prompt)
-    3. Otherwise        → sub_queries = [query]
-
-    The agent sets ``state.sub_queries`` and a temporary ``state.strategy``
-    for backward-compatibility with any code that still reads that field.
-    """
 
     def __init__(self, llm: ChatOpenAI = None):
         super().__init__(name="query_decomposer", version="2.0.0")
@@ -222,14 +210,7 @@ Output format — return ONLY a JSON array, no explanation:
     # ------------------------------------------------------------------
 
     def _parse_sub_queries(self, text: str) -> List[str]:
-        """
-        Parse LLM response into a list of sub-query strings.
-
-        Handles:
-        1. JSON array:      ["q1", "q2", ...]
-        2. Numbered list:   1. q1 / 1) q1
-        3. Last resort:     non-empty lines
-        """
+        
         # ── 1. Try JSON array ──────────────────────────────────────────
         json_match = re.search(r'\[.*?\]', text, re.DOTALL)
         if json_match:

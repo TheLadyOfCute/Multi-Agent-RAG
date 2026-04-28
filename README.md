@@ -234,6 +234,8 @@ flowchart LR
 ### 1. 安装 Python 依赖
 
 ```bash
+conda activate MutiRag
+python --version  # should be Python 3.11.x
 pip install -r requirements.txt
 ```
 

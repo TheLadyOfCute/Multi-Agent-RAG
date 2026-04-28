@@ -14,7 +14,10 @@ from typing import Any, Dict, Iterable, List, Optional
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-from langchain_core._api import LangChainDeprecationWarning
+try:
+    from langchain_core._api import LangChainDeprecationWarning
+except Exception:  # pragma: no cover - fallback for package layout changes
+    LangChainDeprecationWarning = Warning
 
 warnings.filterwarnings(
     "ignore",

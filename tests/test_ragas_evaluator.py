@@ -12,38 +12,45 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_module():
-    sys.modules["langchain_core._api"] = types.SimpleNamespace(
-        LangChainDeprecationWarning=Warning,
-    )
-    sys.modules["langchain_openai"] = types.SimpleNamespace(
-        ChatOpenAI=object,
-        OpenAIEmbeddings=object,
-    )
-    sys.modules["datasets"] = types.SimpleNamespace(
-        Dataset=types.SimpleNamespace(from_dict=lambda data: data),
-    )
-    sys.modules["ragas"] = types.SimpleNamespace(
-        evaluate=lambda *args, **kwargs: {},
-    )
-    sys.modules["ragas.llms"] = types.SimpleNamespace(LangchainLLMWrapper=object)
-    sys.modules["ragas.metrics"] = types.SimpleNamespace(
-        answer_relevancy=object(),
-        context_precision=object(),
-        context_recall=object(),
-        faithfulness=object(),
-    )
-    sys.modules["ragas.run_config"] = types.SimpleNamespace(
-        RunConfig=lambda **kwargs: types.SimpleNamespace(**kwargs),
-    )
-    sys.modules["src.config"] = types.SimpleNamespace(
-        get_settings=lambda: types.SimpleNamespace(),
-    )
-
+    replacements = {
+        "langchain_openai": types.SimpleNamespace(
+            ChatOpenAI=object,
+            OpenAIEmbeddings=object,
+        ),
+        "datasets": types.SimpleNamespace(
+            Dataset=types.SimpleNamespace(from_dict=lambda data: data),
+        ),
+        "ragas": types.SimpleNamespace(
+            evaluate=lambda *args, **kwargs: {},
+        ),
+        "ragas.llms": types.SimpleNamespace(LangchainLLMWrapper=object),
+        "ragas.metrics": types.SimpleNamespace(
+            answer_relevancy=object(),
+            context_precision=object(),
+            context_recall=object(),
+            faithfulness=object(),
+        ),
+        "ragas.run_config": types.SimpleNamespace(
+            RunConfig=lambda **kwargs: types.SimpleNamespace(**kwargs),
+        ),
+        "src.config": types.SimpleNamespace(
+            get_settings=lambda: types.SimpleNamespace(),
+        ),
+    }
+    originals = {name: sys.modules.get(name) for name in replacements}
+    sys.modules.update(replacements)
     path = ROOT / "src" / "evaluation" / "ragas_evaluator.py"
     spec = importlib.util.spec_from_file_location("test_ragas_evaluator_module", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        for name, original in originals.items():
+            if original is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = original
     return module
 
 
@@ -193,3 +200,37 @@ def test_evaluate_rag_system_aggregates_only_final_metric_names(
     assert scores["context_precision"] == 0.5
     assert scores["context_recall"] == 0.5
     assert scores["overall"] == pytest.approx((0.5 + 0.75 + 0.5 + 0.5) / 4)
+
+
+def test_module_loads_without_langchain_private_api_module() -> None:
+    sys.modules.pop("langchain_core._api", None)
+    original_langchain_openai = sys.modules.get("langchain_openai")
+    original_src_config = sys.modules.get("src.config")
+    sys.modules["langchain_openai"] = types.SimpleNamespace(
+        ChatOpenAI=object,
+        OpenAIEmbeddings=object,
+    )
+    sys.modules["src.config"] = types.SimpleNamespace(
+        get_settings=lambda: types.SimpleNamespace(),
+    )
+
+    path = ROOT / "src" / "evaluation" / "ragas_evaluator.py"
+    spec = importlib.util.spec_from_file_location(
+        "test_ragas_evaluator_module_without_private_api",
+        path,
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        if original_langchain_openai is None:
+            sys.modules.pop("langchain_openai", None)
+        else:
+            sys.modules["langchain_openai"] = original_langchain_openai
+        if original_src_config is None:
+            sys.modules.pop("src.config", None)
+        else:
+            sys.modules["src.config"] = original_src_config
+
+    assert issubclass(module.LangChainDeprecationWarning, Warning)

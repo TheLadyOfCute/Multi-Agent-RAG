@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from typing import Any
 
 from src.config import get_settings
@@ -46,7 +47,7 @@ class RedisCacheService:
         ttl: int | None = None,
     ) -> None:
         # 创建缓存日志器并读取应用配置
-        self.logger = setup_logger("redis_cache")
+        self.logger = setup_logger("redis_cache") or logging.getLogger("redis_cache")
         settings = get_settings()
 
         # 支持通过参数覆盖默认配置

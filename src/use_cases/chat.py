@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import logging
 from typing import Any, Callable
 
 from src.server.utils.state import RuntimeState
@@ -11,7 +12,7 @@ from src.graph.neo4j_helpers import close_neo4j_store, open_neo4j_store
 from src.storage.factory import close_vector_store, open_vector_store
 from src.utils.logger import setup_logger
 from src.utils.persistence_restore import restore_or_rebuild_bm25
-logger = setup_logger("chat_use_cases")
+logger = setup_logger("chat_use_cases") or logging.getLogger("chat_use_cases")
 
 
 class GetMessagesUseCase:
@@ -81,7 +82,8 @@ class RunChatQueryUseCase:
         """Run one question through the full RAG workflow."""
 
         def progress(value: float, stage: str, label: str) -> None:
-            logger.info(f"task_id={task_id or '-'} | stage={stage} | {label}")
+            active_logger = logger or setup_logger("chat_use_cases") or logging.getLogger("chat_use_cases")
+            active_logger.info(f"task_id={task_id or '-'} | stage={stage} | {label}")
             if update_task and task_id:
                 update_task(task_id, progress=value, stage=stage, last_id=label)
 
@@ -150,19 +152,22 @@ class RunChatQueryUseCase:
         metadata = self._format_workflow_metadata(result)
         assistant_message = {
             "role": "assistant",
-            "content": result.answer,
+            "content": str(result.get("answer") or ""),
             "citations": citations,
             "workflow_metadata": metadata,
         }
         latency = time.time() - start
-        self.cache_service.set_answer(#保存query到缓存
+        result_chunks = list(result.get("chunks") or [])
+        result_strategy = self._enum_value(result.get("strategy"))
+        result_metadata = result.get("metadata", {}) or {}
+        self.cache_service.set_answer(#???query?????
             query,
             knowledge_state_hash,
             {
                 "message": assistant_message,
-                "chunks_retrieved": len(result.chunks),
-                "strategy": str(result.strategy.value if hasattr(result.strategy, "value") else result.strategy),
-                "iterations": int(result.metadata.get("regeneration_count", 0)),
+                "chunks_retrieved": len(result_chunks),
+                "strategy": str(result_strategy),
+                "iterations": int(result_metadata.get("regeneration_count", 0)),
             },
         )
         with self.runtime_state.lock:
@@ -170,9 +175,9 @@ class RunChatQueryUseCase:
             self.runtime_state.performance_tracker.track_query(
                 query=query,
                 latency=latency,
-                chunks_retrieved=len(result.chunks),
-                strategy=str(result.strategy.value if hasattr(result.strategy, "value") else result.strategy),
-                iterations=result.metadata.get("regeneration_count", 0),
+                chunks_retrieved=len(result_chunks),
+                strategy=str(result_strategy),
+                iterations=result_metadata.get("regeneration_count", 0),
                 cache_hit=False,
             )
 
@@ -182,38 +187,46 @@ class RunChatQueryUseCase:
     @staticmethod
     def _format_citations(result: Any) -> list[dict[str, Any]]:
         citations = []
-        cited_ids = result.metadata.get("writer", {}).get("citation_ids", [])
+        metadata = result.get("metadata", {}) or {}
+        chunks = list(result.get("chunks") or [])
+        cited_ids = metadata.get("writer", {}).get("citation_ids", [])
         if cited_ids:
-            citation_numbers = [citation_id for citation_id in cited_ids if 1 <= citation_id <= len(result.chunks)]
+            citation_numbers = [citation_id for citation_id in cited_ids if 1 <= citation_id <= len(chunks)]
         else:
-            citation_numbers = list(range(1, min(len(result.chunks), 5) + 1))
+            citation_numbers = list(range(1, min(len(chunks), 5) + 1))
 
         for i in citation_numbers:
-            chunk = result.chunks[i - 1]
+            chunk = chunks[i - 1]
+            chunk_metadata = getattr(chunk, "metadata", {})
             citations.append(
                 {
                     "source_number": i,
-                    "filename": chunk.metadata.get("filename", "unknown"),
-                    "chunk_id": chunk.chunk_id,
-                    "text_preview": chunk.text,
-                    "score": chunk.score or 0.0,
+                    "filename": chunk_metadata.get("filename", "unknown"),
+                    "chunk_id": getattr(chunk, "chunk_id", ""),
+                    "text_preview": getattr(chunk, "text", ""),
+                    "score": getattr(chunk, "score", 0.0) or 0.0,
                 }
             )
         return citations
 
     @staticmethod
     def _format_workflow_metadata(result: Any) -> dict[str, Any]:
-        strategy = result.strategy.value if hasattr(result.strategy, "value") else result.strategy
-        decision = result.critic_decision.value if hasattr(result.critic_decision, "value") else result.critic_decision
+        strategy = RunChatQueryUseCase._enum_value(result.get("strategy"))
+        decision = RunChatQueryUseCase._enum_value(result.get("critic_decision"))
+        metadata = result.get("metadata", {}) or {}
         return {
-            "complexity": result.complexity,
+            "complexity": result.get("complexity"),
             "strategy": strategy,
-            "selected_retrievers": result.selected_retrievers,
-            "retriever_quotas": result.retriever_quotas,
-            "retrieval_rounds": result.retrieval_round,
-            "validation_score": result.validation_score,
-            "critic_score": result.critic_score,
-            "regenerations": result.metadata.get("regeneration_count", 0),
+            "selected_retrievers": result.get("selected_retrievers", []),
+            "retriever_quotas": result.get("retriever_quotas", {}),
+            "retrieval_rounds": result.get("retrieval_round"),
+            "validation_score": result.get("validation_score"),
+            "critic_score": result.get("critic_score"),
+            "regenerations": metadata.get("regeneration_count", 0),
             "decision": str(decision).upper() if decision is not None else "",
-            "reranker_used_cohere": result.metadata.get("reranker", {}).get("used_cohere", False),
+            "reranker_used_cohere": metadata.get("reranker", {}).get("used_cohere", False),
         }
+
+    @staticmethod
+    def _enum_value(value: Any) -> Any:
+        return value.value if hasattr(value, "value") else value

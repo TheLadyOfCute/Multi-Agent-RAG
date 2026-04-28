@@ -1,14 +1,14 @@
 # ============================================
 # CORE LLM & ORCHESTRATION
 # ============================================
-langchain-core==0.3.63          
-langgraph==0.2.45               
+langchain-core>=1.0,<2.0
+langgraph>=1.0,<2.0
 
 # ============================================
 # DASHSCOPE (通义千问) - OpenAI-compatible
 # ============================================
 openai>=1.0.0                   # ← DashScope OpenAI-compatible API
-langchain-openai>=0.1.0         # ← LangChain OpenAI wrapper for Qwen
+langchain-openai>=1.0,<2.0      # LangChain OpenAI wrapper for Qwen
 
 # ============================================
 # EMBEDDINGS & RETRIEVAL

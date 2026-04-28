@@ -4,15 +4,26 @@ import importlib.util
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-sys.modules.setdefault("langchain_openai", types.SimpleNamespace(ChatOpenAI=object))
-sys.modules.setdefault("spacy", types.SimpleNamespace(load=lambda *args, **kwargs: None))
 
 
 def load_graph_retrieval_module():
+    replacements = {
+        "langchain_openai": types.SimpleNamespace(ChatOpenAI=object),
+        "spacy": types.SimpleNamespace(load=lambda *args, **kwargs: None),
+    }
+    originals = {name: sys.modules.get(name) for name in replacements}
+    sys.modules.update(replacements)
     path = Path(__file__).resolve().parents[1] / "src" / "retrieval" / "graph_retrieval.py"
     spec = importlib.util.spec_from_file_location("graph_retrieval_under_test", path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        for name, original in originals.items():
+            if original is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = original
     return module
 
 

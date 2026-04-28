@@ -5,28 +5,31 @@ from pathlib import Path
 
 
 def load_script():
-    sys.modules.setdefault("chromadb", types.SimpleNamespace(Collection=object))
-    sys.modules.setdefault(
-        "chromadb.config",
-        types.SimpleNamespace(Settings=lambda **_: object()),
-    )
-    sys.modules.setdefault(
-        "langchain_core.messages",
-        types.SimpleNamespace(HumanMessage=object, SystemMessage=object),
-    )
-    sys.modules.setdefault(
-        "langchain_openai",
-        types.SimpleNamespace(ChatOpenAI=object),
-    )
-    sys.modules.setdefault(
-        "src.config",
-        types.SimpleNamespace(get_settings=lambda: types.SimpleNamespace()),
-    )
-
+    replacements = {
+        "chromadb": types.SimpleNamespace(Collection=object),
+        "chromadb.config": types.SimpleNamespace(Settings=lambda **_: object()),
+        "langchain_core.messages": types.SimpleNamespace(
+            HumanMessage=object,
+            SystemMessage=object,
+        ),
+        "langchain_openai": types.SimpleNamespace(ChatOpenAI=object),
+        "src.config": types.SimpleNamespace(
+            get_settings=lambda: types.SimpleNamespace(),
+        ),
+    }
+    originals = {name: sys.modules.get(name) for name in replacements}
+    sys.modules.update(replacements)
     path = Path(__file__).resolve().parents[1] / "scripts" / "generate_test_questions.py"
     spec = importlib.util.spec_from_file_location("generate_test_questions", path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        for name, original in originals.items():
+            if original is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = original
     return module
 
 
