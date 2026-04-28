@@ -7,8 +7,8 @@ from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from src.api.schemas import RagasRequest
-from src.app.dependencies import (
+from src.server.schemas import RagasRequest
+from src.server.utils.dependencies import (
     get_load_test_questions_use_case,
     get_save_test_questions_upload_use_case,
     get_submit_ragas_evaluation_use_case,

@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from src.app.dependencies import get_clear_all_data_use_case
+from src.server.utils.dependencies import get_clear_all_data_use_case
 
 router = APIRouter(prefix="/api/data", tags=["data"])
 

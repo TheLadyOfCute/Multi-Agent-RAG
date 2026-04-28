@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from src.app.state import RuntimeState
-from src.app.tasks import TaskRegistry
+from src.server.utils.state import RuntimeState
+from src.server.utils.tasks import TaskRegistry
 from src.cache.redis_cache import RedisCacheService
 from src.use_cases.chat import (
     ClearMessagesUseCase,

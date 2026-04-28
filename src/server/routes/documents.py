@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from src.app.dependencies import (
+from src.server.utils.dependencies import (
     get_delete_document_use_case,
     get_list_documents_use_case,
     get_process_uploaded_document_use_case,

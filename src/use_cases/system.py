@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.app.state import RuntimeState
+from src.server.utils.state import RuntimeState
 from src.cache.redis_cache import RedisCacheService
 from src.graph.neo4j_helpers import get_neo4j_stats
 

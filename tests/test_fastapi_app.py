@@ -10,8 +10,8 @@ sys.path.insert(0, str(ROOT))
 
 
 def test_health_and_initial_state(monkeypatch) -> None:
-    from src.app import main
-    from src.app.dependencies import get_restore_document_state_use_case, get_runtime_state
+    from src.server import main
+    from src.server.dependencies import get_restore_document_state_use_case, get_runtime_state
 
     state = get_runtime_state()
     state.reset_runtime()
@@ -29,8 +29,8 @@ def test_health_and_initial_state(monkeypatch) -> None:
 
 
 def test_chat_guard_requires_uploaded_documents(monkeypatch) -> None:
-    from src.app import main
-    from src.app.dependencies import get_restore_document_state_use_case, get_runtime_state
+    from src.server import main
+    from src.server.dependencies import get_restore_document_state_use_case, get_runtime_state
 
     state = get_runtime_state()
     state.reset_runtime()
@@ -44,9 +44,9 @@ def test_chat_guard_requires_uploaded_documents(monkeypatch) -> None:
 
 
 def test_document_upload_creates_task(monkeypatch, tmp_path) -> None:
-    from src.app import main
-    from src.app.dependencies import get_restore_document_state_use_case, get_save_upload_use_case, get_task_registry
-    from src.app.dependencies import get_runtime_state
+    from src.server import main
+    from src.server.dependencies import get_restore_document_state_use_case, get_save_upload_use_case, get_task_registry
+    from src.server.dependencies import get_runtime_state
 
     state = get_runtime_state()
     state.reset_runtime()
@@ -70,8 +70,8 @@ def test_document_upload_creates_task(monkeypatch, tmp_path) -> None:
 
 
 def test_chat_task_endpoint_returns_task_id(monkeypatch) -> None:
-    from src.app import main
-    from src.app.dependencies import get_restore_document_state_use_case, get_run_chat_query_use_case, get_runtime_state
+    from src.server import main
+    from src.server.dependencies import get_restore_document_state_use_case, get_run_chat_query_use_case, get_runtime_state
 
     state = get_runtime_state()
     state.reset_runtime()

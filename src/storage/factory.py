@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.app.paths import CHROMA_DIR
+from src.server.utils.paths import CHROMA_DIR
 
 
 def open_vector_store():

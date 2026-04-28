@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from src.app.dependencies import get_restore_document_state_use_case, get_runtime_state
+from src.server.utils.dependencies import get_restore_document_state_use_case, get_runtime_state
 from src.config import get_settings
-from src.app.runtime import configure_runtime
+from src.server.utils.runtime import configure_runtime
 
 # 配置应用运行时环境
 configure_runtime()

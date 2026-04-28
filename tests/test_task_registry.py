@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT))
 
 
 def test_task_registry_tracks_success() -> None:
-    from src.app.dependencies import get_runtime_state, get_task_registry
+    from src.server.dependencies import get_runtime_state, get_task_registry
 
     state = get_runtime_state()
     registry = get_task_registry()
@@ -33,7 +33,7 @@ def test_task_registry_tracks_success() -> None:
 
 
 def test_task_registry_tracks_errors() -> None:
-    from src.app.dependencies import get_runtime_state, get_task_registry
+    from src.server.dependencies import get_runtime_state, get_task_registry
 
     state = get_runtime_state()
     registry = get_task_registry()

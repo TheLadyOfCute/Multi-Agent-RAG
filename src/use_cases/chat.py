@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
-from src.app.state import RuntimeState
+from src.server.utils.state import RuntimeState
 from src.cache.redis_cache import RedisCacheService
 from src.graph.neo4j_helpers import close_neo4j_store, open_neo4j_store
 from src.storage.factory import close_vector_store, open_vector_store

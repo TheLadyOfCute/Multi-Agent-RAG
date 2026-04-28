@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.app.state import RuntimeState
+from src.server.state import RuntimeState
 from src.cache.redis_cache import RedisCacheService
 from src.use_cases.chat import RunChatQueryUseCase
 from src.use_cases.documents import ClearAllDataUseCase

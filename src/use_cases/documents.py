@@ -7,8 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, BinaryIO
 
-from src.app.paths import BM25_INDEX_PATH, UPLOAD_DIR
-from src.app.state import RuntimeState
+from src.server.utils.paths import BM25_INDEX_PATH, UPLOAD_DIR
+from src.server.utils.state import RuntimeState
 from src.cache.redis_cache import RedisCacheService
 from src.graph.neo4j_helpers import build_neo4j_graph_subprocess, get_neo4j_stats, refresh_neo4j_stats_best_effort
 from src.storage.factory import close_vector_store, open_vector_store

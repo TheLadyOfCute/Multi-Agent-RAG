@@ -7,8 +7,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse
 
-from src.api.schemas import ChatRequest
-from src.app.dependencies import (
+from src.server.schemas import ChatRequest
+from src.server.utils.dependencies import (
     get_clear_messages_use_case,
     get_export_chat_history_use_case,
     get_get_messages_use_case,
@@ -16,7 +16,6 @@ from src.app.dependencies import (
 )
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
-
 
 @router.get("/messages")
 def chat_messages() -> dict[str, Any]:

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
-from src.app.state import RuntimeState
+from src.server.utils.state import RuntimeState
 from src.graph.neo4j_helpers import close_neo4j_store, open_neo4j_store
 from src.storage.factory import close_vector_store, open_vector_store
 from src.utils.logger import setup_logger

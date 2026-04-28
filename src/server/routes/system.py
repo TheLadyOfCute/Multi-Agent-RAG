@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from src.app.dependencies import (
+from src.server.utils.dependencies import (
     get_graph_stats_use_case,
     get_performance_stats_use_case,
     get_runtime_state,

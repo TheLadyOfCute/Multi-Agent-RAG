@@ -5,12 +5,12 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.routes.chat import router as chat_router
-from src.api.routes.data import router as data_router
-from src.api.routes.documents import router as documents_router
-from src.api.routes.evaluation import router as evaluation_router
-from src.api.routes.system import router as system_router
-from src.app.lifespan import app_lifespan
+from src.server.routes.chat import router as chat_router
+from src.server.routes.data import router as data_router
+from src.server.routes.documents import router as documents_router
+from src.server.routes.evaluation import router as evaluation_router
+from src.server.routes.system import router as system_router
+from src.server.utils.lifespan import app_lifespan
 
 # 拼装 FastAPI
 # 真正的业务逻辑已经下沉到 route -> use case -> infrastructure。
