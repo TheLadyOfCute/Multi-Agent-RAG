@@ -28,7 +28,6 @@ def load_chunks(path: Path):
                 "token_count": item.get("token_count", 0),
                 "start_idx": item.get("start_idx", 0),
                 "end_idx": item.get("end_idx", 0),
-                "chunk_type": item.get("chunk_type", "child"),
             }
         )
         for item in payload["chunks"]

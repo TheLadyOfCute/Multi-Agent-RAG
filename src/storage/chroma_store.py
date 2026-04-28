@@ -7,9 +7,6 @@ The active storage format uses one collection: ``chunks``.
 import os
 from typing import Any, Dict, List
 
-import chromadb
-from chromadb.config import Settings
-
 from src.models.chunk import Chunk
 from src.utils.retrieval_debug import format_ranked_chunk_line
 
@@ -18,9 +15,11 @@ class ChromaVectorStore:
     """Persistent vector storage using a single flat chunk collection."""
 
     COLLECTION_NAME = "chunks"
-    LEGACY_COLLECTIONS = ("parent_chunks", "child_chunks")
 
     def __init__(self, persist_directory: str = "data/chroma_db"):
+        import chromadb
+        from chromadb.config import Settings
+
         self.persist_directory = persist_directory
         os.makedirs(persist_directory, exist_ok=True)
 
@@ -33,59 +32,25 @@ class ChromaVectorStore:
         )
 
         self._init_collection()
-        self._migrate_legacy_collections()
 
-        print(f"💾 ChromaDB initialized: {persist_directory}")
+        print(f"ChromaDB initialized: {persist_directory}")
         print(f"   Collection: {self.COLLECTION_NAME}")
 
     def _init_collection(self) -> None:
         """Initialize or get the flat chunk collection."""
         try:
             self.collection = self.client.get_collection(self.COLLECTION_NAME)
-            print(f"   ✅ Loaded existing chunks collection ({self.collection.count()} vectors)")
+            print(f"   Loaded existing chunks collection ({self.collection.count()} vectors)")
         except Exception:
             self.collection = self.client.create_collection(
                 name=self.COLLECTION_NAME,
                 metadata={"description": "Flat chunks for retrieval"},
             )
-            print("   ✅ Created new chunks collection")
-
-    def _migrate_legacy_collections(self) -> None:
-        """Move old child_chunks data into chunks, then remove legacy collections."""
-        legacy_child = self._get_collection_if_exists("child_chunks")
-        if legacy_child is not None and self.collection.count() == 0:
-            legacy_count = legacy_child.count()
-            if legacy_count:
-                legacy = legacy_child.get(
-                    include=["documents", "metadatas", "embeddings"],
-                    limit=legacy_count,
-                )
-                if legacy.get("ids"):
-                    self.collection.add(
-                        ids=legacy["ids"],
-                        documents=legacy["documents"],
-                        embeddings=legacy.get("embeddings"),
-                        metadatas=[
-                            self._clean_metadata(metadata)
-                            for metadata in (legacy.get("metadatas") or [])
-                        ],
-                    )
-                    print(f"   ✅ Migrated {legacy_count} legacy chunks")
-
-        for name in self.LEGACY_COLLECTIONS:
-            if self._get_collection_if_exists(name) is not None:
-                self.client.delete_collection(name)
-                print(f"   ✅ Removed legacy collection: {name}")
-
-    def _get_collection_if_exists(self, name: str):
-        try:
-            return self.client.get_collection(name)
-        except Exception:
-            return None
+            print("   Created new chunks collection")
 
     def add_chunks(self, chunks: List[Chunk], filename: str = "unknown") -> None:
         """Add flat chunks with filename metadata."""
-        print("\n💾 Adding chunks to ChromaDB...")
+        print("\nAdding chunks to ChromaDB...")
 
         if not chunks:
             return
@@ -95,7 +60,6 @@ class ChromaVectorStore:
             metadata = dict(chunk.metadata or {})
             metadata.update(
                 {
-                    "chunk_type": "child",
                     "token_count": chunk.token_count,
                     "start_idx": chunk.start_idx,
                     "end_idx": chunk.end_idx,
@@ -113,7 +77,7 @@ class ChromaVectorStore:
 
     def search(self, query_embedding: List[float], top_k: int = 5) -> List[Dict[str, Any]]:
         """Search flat chunks by vector similarity."""
-        print(f"\n🔎 Searching ChromaDB (top_k={top_k})...")
+        print(f"\nSearching ChromaDB (top_k={top_k})...")
 
         results = self.collection.query(
             query_embeddings=[query_embedding],
@@ -122,16 +86,15 @@ class ChromaVectorStore:
         )
 
         if not results["ids"][0]:
-            print("   ⚠️  No results found")
+            print("   No results found")
             return []
 
-        print(f"   ✅ Found {len(results['ids'][0])} results")
+        print(f"   Found {len(results['ids'][0])} results")
 
         formatted_results = []
         for i, chunk_id in enumerate(results["ids"][0]):
-            metadata = dict(results["metadatas"][0][i] or {})
+            metadata = self._clean_metadata(dict(results["metadatas"][0][i] or {}))
             metadata.setdefault("source", "vector")
-            metadata["chunk_type"] = "child"
             distance = results["distances"][0][i]
             similarity = 1 / (1 + distance)
 
@@ -140,8 +103,6 @@ class ChromaVectorStore:
                     "chunk_id": chunk_id,
                     "text": results["documents"][0][i],
                     "score": similarity,
-                    "chunk_type": "child",
-                    "child_chunk_id": chunk_id,
                     "metadata": metadata,
                 }
             )
@@ -171,15 +132,12 @@ class ChromaVectorStore:
             if chunk_id not in by_id:
                 continue
 
-            metadata = dict(by_id[chunk_id]["metadata"])
-            metadata["chunk_type"] = "child"
+            metadata = self._clean_metadata(dict(by_id[chunk_id]["metadata"]))
             formatted_results.append(
                 {
                     "chunk_id": chunk_id,
                     "text": by_id[chunk_id]["text"],
                     "score": 1.0 / rank,
-                    "chunk_type": "child",
-                    "child_chunk_id": chunk_id,
                     "metadata": metadata,
                 }
             )
@@ -202,11 +160,17 @@ class ChromaVectorStore:
 
     def clear_all(self) -> None:
         """Clear all collections."""
-        for name in [self.COLLECTION_NAME, *self.LEGACY_COLLECTIONS]:
-            if self._get_collection_if_exists(name) is not None:
+        for name in [self.COLLECTION_NAME]:
+            if self._get_collection(name) is not None:
                 self.client.delete_collection(name)
         self._init_collection()
-        print("⚠️  All collections cleared")
+        print("All collections cleared")
+
+    def _get_collection(self, name: str):
+        try:
+            return self.client.get_collection(name)
+        except Exception:
+            return None
 
     def close(self) -> None:
         """Release Chroma's process-local handles."""
@@ -226,7 +190,14 @@ class ChromaVectorStore:
         """Remove hierarchy fields and normalize values for Chroma metadata."""
         cleaned = {}
         for key, value in metadata.items():
-            if key in {"parent_id", "parent_chunk_id", "child_chunk_ids"}:
+            if key in {
+                "parent_id",
+                "parent_chunk_id",
+                "child_chunk_ids",
+                "child_chunk_id",
+                "chunk_type",
+                "matched_child_id",
+            }:
                 continue
             if value is None:
                 continue

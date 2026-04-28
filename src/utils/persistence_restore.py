@@ -7,8 +7,7 @@ from typing import Any, Dict, List, Optional
 def build_document_records(vector_store: Any) -> List[Dict[str, Any]]:
     """Build sidebar document records from persisted Chroma metadata."""
 
-    # 从 Chroma 集合中读取已持久化的元数据
-    records = vector_store.collection.get(include=["metadatas"])
+    # �?Chroma 集合中读取已持久化的元数�?    records = vector_store.collection.get(include=["metadatas"])
 
     # 用文件名聚合文档记录
     documents: Dict[str, Dict[str, Any]] = {}
@@ -56,13 +55,11 @@ def load_persisted_knowledge_graphs(graph_dir: str = "data/graphs") -> Optional[
 
 
 def restore_or_rebuild_bm25(vector_store: Any, index_path: str = "data/bm25_index.pkl") -> Any:
-    """Load BM25 if it matches Chroma child count, otherwise rebuild it."""
+    """Load BM25 if it matches Chroma chunk count, otherwise rebuild it."""
 
-    # 延迟导入 BM25 索引，避免模块加载时产生不必要依赖
-    from src.retrieval.bm25_index import BM25Index
+    # 延迟导入 BM25 索引，避免模块加载时产生不必要依�?    from src.retrieval.bm25_index import BM25Index
 
-    # 获取 Chroma 中当前文本块数量，作为 BM25 是否匹配的依据
-    expected_chunks = vector_store.collection.count()
+    # 获取 Chroma 中当前文本块数量，作�?BM25 是否匹配的依�?    expected_chunks = vector_store.collection.count()
 
     # 创建 BM25 索引实例，并指定索引文件路径
     bm25_index = BM25Index(index_path=index_path)
@@ -77,10 +74,9 @@ def restore_or_rebuild_bm25(vector_store: Any, index_path: str = "data/bm25_inde
     # 当索引不存在或数量不匹配时，从向量库重建 BM25 索引
     bm25_index.build_from_vector_store(vector_store)
 
-    # 将重建后的 BM25 索引保存到磁盘
-    bm25_index.save()
+    # 将重建后�?BM25 索引保存到磁�?    bm25_index.save()
 
-    # 返回可用的 BM25 索引实例
+    # 返回可用�?BM25 索引实例
     return bm25_index
 
 

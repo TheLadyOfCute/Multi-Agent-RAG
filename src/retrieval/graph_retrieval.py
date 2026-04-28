@@ -314,10 +314,6 @@ class GraphRetrieval:
         chunks = []
         for result in results:
             metadata = dict(result.get("metadata", {}) or {})
-            if result.get("child_chunk_id"):
-                metadata["child_chunk_id"] = result["child_chunk_id"]
-            elif result.get("chunk_type") == "child":
-                metadata["child_chunk_id"] = result["chunk_id"]
             chunk = Chunk(
                 text=result["text"],
                 doc_id="unknown",
@@ -325,7 +321,6 @@ class GraphRetrieval:
                 score=result["score"],
                 metadata={
                     "filename": metadata.get("filename", "unknown"),
-                    "chunk_type": result.get("chunk_type", "child"),
                     "retrieval_method": "graph",
                     "source": "graph",
                     "retriever": "graph",
@@ -345,7 +340,7 @@ class GraphRetrieval:
         entities: Set[str],
         paths: List[Dict] = None,
     ) -> List[str]:
-        """Collect ordered child chunk evidence from matching nodes and edges."""
+        """Collect ordered chunk evidence from matching nodes and edges."""
         if hasattr(self.kg, "collect_evidence_chunk_ids"):
             return self.kg.collect_evidence_chunk_ids(entities, paths=paths)
 

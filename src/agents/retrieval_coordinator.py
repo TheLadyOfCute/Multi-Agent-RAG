@@ -610,9 +610,7 @@ class RetrievalCoordinator(BaseAgent):
         if not chunks:
             return []
         
-        # Group by triggering child id first. This collapses the same
-        # child hit returned as parent context by vector search and as
-        # a child chunk by BM25.
+        # Group by stable chunk identity first.
         hash_groups = defaultdict(list)
         
         for chunk in chunks:

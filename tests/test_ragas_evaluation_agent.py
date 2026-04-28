@@ -57,7 +57,7 @@ class FakeWorkflow:
         chunk = SimpleNamespace(
             text=f"context for {question}",
             chunk_id="chunk-fallback",
-            metadata={"child_chunk_id": "child-001"},
+            metadata={},
         )
         return SimpleNamespace(
             answer=f"answer for {question}",
@@ -118,10 +118,10 @@ def test_collect_rag_outputs_writes_standardized_retrieved_chunk_ids(tmp_path: P
 
     assert rows[0]["ground_truth"] == "A retrieval augmented generation system."
     assert rows[0]["contexts"] == ["context for What is RAG?"]
-    assert rows[0]["retrieved_chunk_ids"] == ["child-001"]
+    assert rows[0]["retrieved_chunk_ids"] == ["chunk-fallback"]
 
     cached_rows = read_jsonl(rag_outputs_path)
-    assert cached_rows[0]["retrieved_chunk_ids"] == ["child-001"]
+    assert cached_rows[0]["retrieved_chunk_ids"] == ["chunk-fallback"]
     assert cached_rows[0]["contexts"] == ["context for What is RAG?"]
 
 

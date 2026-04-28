@@ -19,44 +19,8 @@ def _short(value: Any, max_len: int = 40) -> str:
     return text if len(text) <= max_len else text[: max_len - 3] + "..."
 
 
-def chunk_identity(value: Any) -> dict[str, str]:
-    """Return the visible parent/child identity for a dict result or Chunk."""
-    meta = _metadata(value)
-    chunk_id = _get_attr_or_key(value, "chunk_id", "")
-    chunk_type = (
-        meta.get("chunk_type")
-        or _get_attr_or_key(value, "chunk_type", None)
-        or "chunk"
-    )
-    child_id = (
-        _get_attr_or_key(value, "child_chunk_id", None)
-        or meta.get("child_chunk_id")
-        or meta.get("matched_child_id")
-    )
-    parent_id = (
-        meta.get("parent_id")
-        or meta.get("parent_chunk_id")
-        or _get_attr_or_key(value, "parent_id", None)
-    )
-
-    if chunk_type == "parent":
-        parent_id = chunk_id or parent_id
-    elif chunk_type == "child":
-        child_id = child_id or chunk_id
-
-    return {
-        "chunk_type": str(chunk_type),
-        "parent_id": str(parent_id or ""),
-        "child_id": str(child_id or ""),
-    }
-
-
 def chunk_dedup_key(value: Any) -> str:
     """Return the preferred duplicate key for retrieval results."""
-    identity = chunk_identity(value)
-    if identity["child_id"]:
-        return f"child:{identity['child_id']}"
-
     chunk_id = _get_attr_or_key(value, "chunk_id", "")
     if chunk_id:
         return f"chunk:{chunk_id}"
@@ -98,7 +62,7 @@ def format_ranked_chunk_line(
 ) -> str:
     """Format one ranked retrieval result for backend logs."""
     meta = _metadata(value)
-    identity = chunk_identity(value)
+    chunk_id = _get_attr_or_key(value, "chunk_id", "")
     resolved_score = score
     if resolved_score is None:
         resolved_score = _get_attr_or_key(value, "score", None)
@@ -106,7 +70,7 @@ def format_ranked_chunk_line(
     score_text = "n/a" if resolved_score is None else f"{float(resolved_score):.4f}"
     retriever = meta.get("retriever") or meta.get("source")
 
-    parts = [f"   child={_short(identity['child_id'])}", f"score={score_text}"]
+    parts = [f"   chunk={_short(chunk_id)}", f"score={score_text}"]
     if retriever:
         parts.append(f"retriever={retriever}")
     if meta.get("sub_query_idx") is not None:
@@ -115,4 +79,3 @@ def format_ranked_chunk_line(
         parts.append(f"query={_short(meta.get('query_used'), 64)}")
 
     return " | ".join(parts)
-

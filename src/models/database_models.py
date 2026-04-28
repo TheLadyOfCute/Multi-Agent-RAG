@@ -3,10 +3,7 @@ Database models for metadata storage.
 Uses SQLAlchemy ORM for database operations.
 """
 
-from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, Float, 
-    ForeignKey, Boolean, JSON
-)
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -43,7 +40,7 @@ class Document(Base):
 
 
 class Chunk(Base):
-    """Chunk metadata table (both parent and child)."""
+    """Chunk metadata table."""
     
     __tablename__ = 'chunks'
     
@@ -57,10 +54,6 @@ class Chunk(Base):
     start_idx = Column(Integer)
     end_idx = Column(Integer)
     
-    # Hierarchical info
-    chunk_type = Column(String(10), nullable=False)  # parent, child
-    parent_id = Column(Integer, ForeignKey('chunks.id'), nullable=True)
-    
     # Vector info (reference to ChromaDB)
     vector_id = Column(String(100), unique=True)  # ID in ChromaDB
     embedding_model = Column(String(50), default='text-embedding-v4')
@@ -70,10 +63,8 @@ class Chunk(Base):
     
     # Relationships
     document = relationship("Document", back_populates="chunks")
-    parent = relationship("Chunk", remote_side=[id], backref="children")
-    
     def __repr__(self):
-        return f"<Chunk(id={self.id}, chunk_id='{self.chunk_id}', type='{self.chunk_type}')>"
+        return f"<Chunk(id={self.id}, chunk_id='{self.chunk_id}')>"
 
 
 class QueryLog(Base):

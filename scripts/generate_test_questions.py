@@ -82,7 +82,7 @@ def main() -> None:
 
     document_text = read_document(input_path)
     collection = open_chroma_collection(chroma_dir, collection_name)
-    chunks = fetch_child_chunks(collection, min_length)
+    chunks = fetch_chunks(collection, min_length)
     if not chunks:
         raise RuntimeError("No valid chunks found.")
 
@@ -162,11 +162,8 @@ def open_chroma_collection(persist_dir: str, collection_name: str) -> chromadb.C
     return client.get_collection(collection_name)
 
 
-def fetch_child_chunks(collection: chromadb.Collection, min_length: int) -> list[dict[str, Any]]:
-    try:
-        result = collection.get(where={"chunk_type": "child"}, include=["documents", "metadatas"])
-    except Exception:
-        result = collection.get(include=["documents", "metadatas"])
+def fetch_chunks(collection: chromadb.Collection, min_length: int) -> list[dict[str, Any]]:
+    result = collection.get(include=["documents", "metadatas"])
 
     chunks = []
     for chunk_id, text, metadata in zip(
@@ -176,7 +173,7 @@ def fetch_child_chunks(collection: chromadb.Collection, min_length: int) -> list
     ):
         text = (text or "").strip()
         metadata = metadata or {}
-        if len(text) >= min_length and metadata.get("chunk_type", "child") == "child":
+        if len(text) >= min_length:
             chunks.append({"chunk_id": chunk_id, "text": text, "metadata": metadata})
     return chunks
 

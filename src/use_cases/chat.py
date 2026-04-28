@@ -189,8 +189,7 @@ class RunChatQueryUseCase:
                 {
                     "source_number": i,
                     "filename": chunk.metadata.get("filename", "unknown"),
-                    "child_id": chunk.metadata.get("child_chunk_id") or chunk.chunk_id,
-                    "chunk_type": chunk.metadata.get("chunk_type", "unknown"),
+                    "chunk_id": chunk.chunk_id,
                     "text_preview": chunk.text,
                     "score": chunk.score or 0.0,
                 }

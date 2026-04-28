@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     allowed_file_types: str = Field(default="pdf,docx,txt", description="Allowed upload file types (comma-separated)")
     
     # ===== Performance Configuration =====
-    batch_size: int = Field(default=128, description="Batch size for embedding generation", gt=0)
+    batch_size: int = Field(default=10, description="Batch size for embedding generation", gt=0)
     
     @field_validator("log_level")
     @classmethod

@@ -8,7 +8,10 @@ from typing import List, Dict, Any, Optional
 import pickle
 from pathlib import Path
 import re
-from rank_bm25 import BM25Okapi
+try:
+    from rank_bm25 import BM25Okapi
+except Exception:  # pragma: no cover - optional dependency fallback
+    BM25Okapi = Any  # type: ignore[assignment]
 
 from src.models.chunk import Chunk
 from src.storage.chroma_store import ChromaVectorStore

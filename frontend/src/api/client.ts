@@ -13,8 +13,7 @@ export interface DocumentRecord {
 export interface Citation {
   source_number: number
   filename: string
-  child_id: string
-  chunk_type: string
+  chunk_id: string
   text_preview: string
   score: number
 }

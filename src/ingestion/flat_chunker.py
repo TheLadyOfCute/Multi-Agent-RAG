@@ -73,10 +73,7 @@ class FlatChunker:
                     token_count=len(chunk_tokens),
                     start_idx=start_idx,
                     end_idx=end_idx,
-                    chunk_type="child",
-                    parent_id=None,
-                    children_ids=[],
-                    metadata=chunk_metadata
+                    metadata=chunk_metadata,
                 )
             )
 

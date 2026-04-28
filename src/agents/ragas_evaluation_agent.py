@@ -241,8 +241,7 @@ class RagasEvaluationAgent:
 
 
 def chunk_id_for_evaluation(chunk: Any) -> str:
-    metadata = getattr(chunk, "metadata", {}) or {}
-    return str(metadata.get("child_chunk_id") or getattr(chunk, "chunk_id", ""))
+    return str(getattr(chunk, "chunk_id", ""))
 
 
 def read_jsonl(path: str | Path) -> List[Dict[str, Any]]:

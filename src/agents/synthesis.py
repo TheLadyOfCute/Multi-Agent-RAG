@@ -190,14 +190,9 @@ class SynthesisAgent(BaseAgent):
 
         unique: List[Chunk] = []
         for group in hash_groups.values():
-            # Prefer child evidence over parent context before comparing
-            # raw scores, because retriever score scales are not comparable.
             sorted_group = sorted(
                 group,
-                key=lambda c: (
-                    1 if c.metadata.get("chunk_type") == "child" else 0,
-                    c.score or 0.0,
-                ),
+                key=lambda c: c.score or 0.0,
                 reverse=True,
             )
             best = sorted_group[0]

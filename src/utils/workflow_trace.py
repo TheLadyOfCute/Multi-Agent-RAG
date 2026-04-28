@@ -24,18 +24,15 @@ def format_stage_trace(
 
 
 def summarize_chunks(chunks: Iterable[Any]) -> str:
-    """Summarize chunk types and retriever/source counts."""
-    type_counts: Counter[str] = Counter()
+    """Summarize retriever/source counts."""
     source_counts: Counter[str] = Counter()
 
     for chunk in chunks:
         metadata = getattr(chunk, "metadata", {}) or {}
-        chunk_type = metadata.get("chunk_type") or getattr(chunk, "chunk_type", "unknown")
         source = metadata.get("retriever") or metadata.get("source") or "unknown"
-        type_counts[str(chunk_type)] += 1
         source_counts[str(source)] += 1
 
-    return f"types={dict(type_counts)}, sources={dict(source_counts)}"
+    return f"sources={dict(source_counts)}"
 
 
 def _format_pairs(values: Dict[str, Any]) -> str:

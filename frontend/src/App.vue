@@ -148,7 +148,7 @@ async function pollTask(taskId: string, kind: 'upload' | 'eval' | 'chat') {
         evaluationResult.value = task.result as EvaluationResult
       }
       if (kind === 'chat') {
-        notice.value = '回答已生成'
+        notice.value = '回答已生�?
         busy.value = false
         chatTask.value = null
       }
@@ -171,7 +171,7 @@ async function askQuestion(text?: string) {
   const question = (text ?? query.value).trim()
   if (!question || busy.value) return
   error.value = ''
-  notice.value = '问题已提交，正在启动多 Agent 工作流...'
+  notice.value = '问题已提交，正在启动�?Agent 工作�?..'
   busy.value = true
   query.value = ''
   messages.value.push({ role: 'user', content: question })
@@ -189,7 +189,7 @@ async function askQuestion(text?: string) {
       status: 'pending',
       progress: 0.02,
       stage: 'queued',
-      last_id: '任务已进入队列'
+      last_id: '任务已进入队�?
     }
     pollTask(result.task_id, 'chat')
   } catch (err) {
@@ -221,7 +221,7 @@ async function refreshGraph() {
 async function removeDocument(name: string) {
   try {
     const result = await api.deleteDocument(name)
-    notice.value = result.vector_chunks_deleted ? '文档已删除' : '文档记录已删除，向量数据未单独清理'
+    notice.value = result.vector_chunks_deleted ? '文档已删�? : '文档记录已删除，向量数据未单独清�?
     await refreshAll()
   } catch (err) {
     setError(err)
@@ -263,7 +263,7 @@ async function uploadQuestionFile(event: Event) {
     const result = await api.uploadQuestions(file)
     testFile.value = result.test_file
     questions.value = result.questions
-    notice.value = `已加载 ${result.questions.length} 个评估问题`
+    notice.value = `已加�?${result.questions.length} 个评估问题`
   } catch (err) {
     setError(err)
   } finally {
@@ -358,7 +358,7 @@ onMounted(async () => {
           <button
             class="icon-button"
             :class="{ spinning: graphRefreshing }"
-            title="刷新图统计"
+            title="刷新图统�?
             :disabled="graphRefreshing"
             @click="refreshGraph"
           >
@@ -367,7 +367,7 @@ onMounted(async () => {
         </div>
         <div class="metric-grid compact">
           <div><strong>{{ graphCounts.nodes }}</strong><span>节点</span></div>
-          <div><strong>{{ graphCounts.edges }}</strong><span>边</span></div>
+          <div><strong>{{ graphCounts.edges }}</strong><span>�?/span></div>
         </div>
         <p v-if="appState?.neo4j.error" class="muted">{{ appState.neo4j.error }}</p>
         <div class="entity-list">
@@ -383,7 +383,7 @@ onMounted(async () => {
           <span>示例问题</span>
         </div>
         <button class="sample" @click="askQuestion('这篇文档的核心观点是什么？')">这篇文档的核心观点是什么？</button>
-        <button class="sample" @click="askQuestion('请总结文档中的关键技术点。')">请总结文档中的关键技术点。</button>
+        <button class="sample" @click="askQuestion('请总结文档中的关键技术点�?)">请总结文档中的关键技术点�?/button>
         <button class="sample" @click="askQuestion('文档中有哪些值得注意的风险？')">文档中有哪些值得注意的风险？</button>
       </section>
 
@@ -395,7 +395,7 @@ onMounted(async () => {
           <X :size="15" /> 清空对话
         </button>
         <button class="secondary-button danger-text" :disabled="clearingData" @click="clearData">
-          <Trash2 :size="15" /> {{ clearingData ? '清空中' : '清空数据' }}
+          <Trash2 :size="15" /> {{ clearingData ? '清空�? : '清空数据' }}
         </button>
       </div>
     </aside>
@@ -409,7 +409,7 @@ onMounted(async () => {
         <div class="metric-row">
           <div><strong>{{ documents.length }}</strong><span>文档</span></div>
           <div><strong>{{ messages.length }}</strong><span>消息</span></div>
-          <div><strong>{{ totalChunks }}</strong><span>块</span></div>
+          <div><strong>{{ totalChunks }}</strong><span>�?/span></div>
         </div>
       </header>
 
@@ -432,7 +432,7 @@ onMounted(async () => {
         <div class="messages">
           <div v-if="!messages.length && !chatTask" class="empty-chat">
             <Bot :size="30" />
-            <strong>上传文档后开始提问</strong>
+            <strong>上传文档后开始提�?/strong>
           </div>
           <article v-for="(message, index) in messages" :key="index" :class="['message', message.role]">
             <div class="message-head">
@@ -442,11 +442,11 @@ onMounted(async () => {
             <div v-if="message.citations?.length" class="citations">
               <button
                 v-for="citation in message.citations"
-                :key="citation.child_id"
+                :key="citation.chunk_id"
                 class="chip source-chip"
-                :class="{ expanded: openCitations[citationKey(index, citation.child_id, citation.source_number)] }"
-                :aria-expanded="openCitations[citationKey(index, citation.child_id, citation.source_number)] ? 'true' : 'false'"
-                @click="toggleCitation(index, citation.child_id, citation.source_number)"
+                :class="{ expanded: openCitations[citationKey(index, citation.chunk_id, citation.source_number)] }"
+                :aria-expanded="openCitations[citationKey(index, citation.chunk_id, citation.source_number)] ? 'true' : 'false'"
+                @click="toggleCitation(index, citation.chunk_id, citation.source_number)"
               >
                 来源 {{ citation.source_number }} · {{ citation.filename }} · {{ citation.score.toFixed(3) }}
               </button>
@@ -454,15 +454,15 @@ onMounted(async () => {
             <div v-if="message.citations?.length" class="source-panels">
               <article
                 v-for="citation in message.citations"
-                v-show="openCitations[citationKey(index, citation.child_id, citation.source_number)]"
-                :key="`${citation.child_id}-panel`"
+                v-show="openCitations[citationKey(index, citation.chunk_id, citation.source_number)]"
+                :key="`${citation.chunk_id}-panel`"
                 class="source-panel"
               >
                 <header>
                   <strong>[{{ citation.source_number }}] {{ citation.filename }}</strong>
-                  <span>{{ citation.chunk_type }} · {{ citation.score.toFixed(4) }}</span>
+                  <span>{{ citation.score.toFixed(4) }}</span>
                 </header>
-                <div class="source-id">{{ citation.child_id }}</div>
+                <div class="source-id">{{ citation.chunk_id }}</div>
                 <p>{{ citation.text_preview }}</p>
               </article>
             </div>
@@ -486,8 +486,8 @@ onMounted(async () => {
         </div>
         <form class="command-bar" @submit.prevent="askQuestion()">
           <Sparkles :size="20" />
-          <input v-model="query" :disabled="busy" placeholder="请输入您关于文档的问题..." />
-          <button :disabled="busy || !query.trim()" title="发送">
+          <input v-model="query" :disabled="busy" placeholder="请输入您关于文档的问�?.." />
+          <button :disabled="busy || !query.trim()" title="发�?>
             <Send :size="18" />
           </button>
         </form>
@@ -498,9 +498,7 @@ onMounted(async () => {
           <h2>RAGAS 评估</h2>
         </div>
         <p class="hint">
-          用 RAGAS 对“检索 + 回答”质量打分（0～1，越高越好）：Faithfulness（回答是否忠于上下文）、Relevancy（是否贴合问题）、
-          Context Precision（检索是否精确）、Context Recall（检索是否覆盖关键信息）。
-        </p>
+          �?RAGAS 对“检�?+ 回答”质量打分（0�?，越高越好）：Faithfulness（回答是否忠于上下文）、Relevancy（是否贴合问题）�?          Context Precision（检索是否精确）、Context Recall（检索是否覆盖关键信息）�?        </p>
         <div class="toolbar">
           <label class="secondary-button">
             <Upload :size="15" /> 上传问题
@@ -513,15 +511,14 @@ onMounted(async () => {
             复用 RAG 输出
           </label>
           <button class="primary-button" :disabled="!!evalTask && evalTask.status === 'running'" @click="startEvaluation">
-            <Activity :size="16" /> 开始评估
-          </button>
+            <Activity :size="16" /> 开始评�?          </button>
         </div>
         <div v-if="evalTask" class="task-strip wide">
           <span>{{ evalTask.status }} · {{ evalTask.stage || 'waiting' }} · {{ evalTask.current || 0 }}/{{ evalTask.total || 0 }}</span>
           <div><i :style="{ width: `${evalProgress}%` }" /></div>
         </div>
         <div v-if="evaluationResult" class="metric-grid">
-          <div><strong>{{ evaluationResult.summary?.num_questions ?? '-' }}</strong><span>问题数</span></div>
+          <div><strong>{{ evaluationResult.summary?.num_questions ?? '-' }}</strong><span>问题�?/span></div>
           <div><strong>{{ evaluationResult.summary?.num_success ?? '-' }}</strong><span>成功</span></div>
           <div><strong>{{ evaluationResult.summary?.num_failed ?? '-' }}</strong><span>失败</span></div>
           <div><strong>{{ typeof evaluationResult.summary?.mean_overall === 'number' ? evaluationResult.summary.mean_overall.toFixed(2) : '-' }}</strong><span>Overall 平均</span></div>
@@ -535,7 +532,7 @@ onMounted(async () => {
                 <th>Type</th>
                 <th>Reference</th>
                 <th>实际命中 chunk_id</th>
-                <th>参考 chunk_id</th>
+                <th>参�?chunk_id</th>
               </tr>
             </thead>
             <tbody>
@@ -596,10 +593,10 @@ onMounted(async () => {
 
       <section v-else-if="activeTab === 'stats'" class="panel stack">
         <div class="metric-grid">
-          <div><strong>{{ totalChunks }}</strong><span>总块数</span></div>
+          <div><strong>{{ totalChunks }}</strong><span>总块�?/span></div>
           <div><strong>{{ userQueries }}</strong><span>查询次数</span></div>
           <div><strong>{{ documents.length }}</strong><span>文档数量</span></div>
-          <div><strong>{{ appState?.rag_initialized ? 'Ready' : 'Idle' }}</strong><span>系统状态</span></div>
+          <div><strong>{{ appState?.rag_initialized ? 'Ready' : 'Idle' }}</strong><span>系统状�?/span></div>
         </div>
         <div class="toolbar">
           <select v-model="selectedDocument" class="path-input">
@@ -609,14 +606,14 @@ onMounted(async () => {
         </div>
         <article v-if="selectedDocument" class="doc-detail">
           <h2>{{ selectedDocument }}</h2>
-          <p v-if="preview">{{ preview.chars.toLocaleString() }} 字符 · {{ preview.words.toLocaleString() }} 词</p>
+          <p v-if="preview">{{ preview.chars.toLocaleString() }} 字符 · {{ preview.words.toLocaleString() }} �?/p>
           <pre v-if="preview">{{ preview.text }}</pre>
         </article>
       </section>
 
       <section v-else class="panel stack">
         <div class="metric-grid">
-          <div><strong>{{ perf.total_queries ?? 0 }}</strong><span>总查询</span></div>
+          <div><strong>{{ perf.total_queries ?? 0 }}</strong><span>总查�?/span></div>
           <div><strong>{{ perf.avg_latency_ms ? (perf.avg_latency_ms / 1000).toFixed(2) + 's' : '-' }}</strong><span>平均延迟</span></div>
           <div><strong>{{ perf.cache_hit_rate ? (perf.cache_hit_rate * 100).toFixed(1) + '%' : '0%' }}</strong><span>缓存命中</span></div>
           <div><strong>{{ perf.avg_chunks?.toFixed?.(1) ?? '-' }}</strong><span>平均块数</span></div>

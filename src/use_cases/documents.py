@@ -204,6 +204,7 @@ class ProcessUploadedDocumentUseCase:
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
             )
+            # 新增或更新运行时文档状态，并标记 RAG 已初始化
             self._upsert_document_state(document)
             self.cache_service.clear_answer_cache()
             progress(1.0, "done", filename)
@@ -261,11 +262,15 @@ class ProcessUploadedDocumentUseCase:
 
     @staticmethod
     def _embed_chunks(chunks: list[Any], embedder: Any) -> None:
-        for chunk in chunks:
-            chunk.embedding = embedder.generate([chunk.text])[0]
+        if not chunks:
+            return
+        
+        texts = [chunk.text for chunk in chunks]
+        embeddings = embedder.generate(texts)#批量embedding生成，内部会优先复用缓存
+        for chunk, embedding in zip(chunks, embeddings):
+            chunk.embedding = embedding
 
     def _build_graph_best_effort(self, chunks: list[Any]) -> bool:
-        # 图谱构建是增强能力，不是上传成功的硬依赖，所以这里采用 best-effort。
         try:
             build_neo4j_graph_subprocess(chunks)
             try:
@@ -279,7 +284,6 @@ class ProcessUploadedDocumentUseCase:
 
     @staticmethod
     def _build_bm25_best_effort(vector_store: Any) -> bool:
-        # BM25 同理：尽量构建，但失败时不阻塞主上传流程。
         try:
             from src.retrieval.bm25_index import BM25Index
 

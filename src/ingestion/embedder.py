@@ -1,16 +1,9 @@
-"""
-Embedding Generator - Generate embeddings using DashScope text-embedding-v4.
-
-Uses DashScope API (OpenAI-compatible mode) for high-quality semantic embeddings.
-Supports batch processing and Redis-backed caching.
-"""
+"""Embedding generator using DashScope-compatible embeddings API."""
 
 from __future__ import annotations
 
 import time
 from typing import Any
-
-from openai import OpenAI
 
 from src.config import get_settings
 from src.utils.exceptions import AgenticRAGException
@@ -42,6 +35,8 @@ class EmbeddingGenerator:
         self.cache_service = cache_service
 
         try:
+            from openai import OpenAI
+
             self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
             self.logger.info(f"Initialized DashScope embedding client, model: {self.model}")
         except Exception as exc:
