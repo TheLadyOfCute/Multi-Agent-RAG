@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import sys
 from pathlib import Path
@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT))
 from src.server.state import RuntimeState
 from src.cache.redis_cache import RedisCacheService
 from src.use_cases.chat import RunChatQueryUseCase
-from src.use_cases.documents import ClearAllDataUseCase
+from src.use_cases.document import ClearAllDataUseCase
 
 
 class FakeRedis:
@@ -117,11 +117,13 @@ def test_clear_all_data_use_case_clears_answer_cache(monkeypatch) -> None:
 
     cache_service = RecordingCache()
 
-    monkeypatch.setattr("src.use_cases.documents.open_vector_store", lambda: DummyVectorStore())
-    monkeypatch.setattr("src.use_cases.documents.close_vector_store", lambda vector_store: None)
+    monkeypatch.setattr("src.use_cases.document.open_vector_store", lambda: DummyVectorStore())
+    monkeypatch.setattr("src.use_cases.document.close_vector_store", lambda vector_store: None)
 
     use_case = ClearAllDataUseCase(runtime_state, DummyTaskRegistry(), cache_service)
     result = use_case.execute()
 
     assert result == {"cleared": True}
     assert cache_service.calls == 1
+
+

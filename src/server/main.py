@@ -1,4 +1,4 @@
-"""Primary FastAPI application entrypoint."""
+﻿"""Primary FastAPI application entrypoint."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from src.server.routes.evaluation import router as evaluation_router
 from src.server.routes.system import router as system_router
 from src.server.utils.lifespan import app_lifespan
 
-# 拼装 FastAPI
-# 真正的业务逻辑已经下沉到 route -> use case -> infrastructure。
+# 鎷艰 FastAPI
+# 鐪熸鐨勪笟鍔￠€昏緫宸茬粡涓嬫矇鍒?route -> use case -> infrastructure銆?
 app = FastAPI(title="Multi-Agent RAG API", version="1.0.0", lifespan=app_lifespan)
 app.add_middleware(
     CORSMiddleware,
@@ -23,7 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 路由注册顺序没有特殊语义，所有模块统一挂到同一个 app 上。
+# 璺敱娉ㄥ唽椤哄簭娌℃湁鐗规畩璇箟锛屾墍鏈夋ā鍧楃粺涓€鎸傚埌鍚屼竴涓?app 涓娿€?
 app.include_router(system_router)
 app.include_router(documents_router)
 app.include_router(data_router)
@@ -53,3 +53,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
