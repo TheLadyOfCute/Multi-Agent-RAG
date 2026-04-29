@@ -47,27 +47,6 @@ def build_document_records(vector_store: Any) -> List[Dict[str, Any]]:
     return fallback_docs
 
 
-def load_persisted_knowledge_graphs(graph_dir: str = "data/graphs") -> Optional[Any]:
-    """Load one or more saved knowledge graph pickle files."""
-    graph_path = Path(graph_dir)
-    graph_files = sorted(graph_path.glob("*_graph.pkl"))
-    if not graph_files:
-        return None
-
-    import networkx as nx
-    from src.graph.graph_builder import KnowledgeGraph
-
-    merged = KnowledgeGraph()
-    for file_path in graph_files:
-        kg = KnowledgeGraph()
-        kg.load(str(file_path))
-        merged.graph = nx.compose(merged.graph, kg.graph)
-
-    merged.entity_count = merged.graph.number_of_nodes()
-    merged.relationship_count = merged.graph.number_of_edges()
-    return merged if merged.graph.number_of_nodes() > 0 else None
-
-
 def restore_or_rebuild_bm25(vector_store: Any, index_path: str = "data/bm25_index.pkl") -> Any:
     """Load BM25 if it matches Chroma chunk count, otherwise rebuild it."""
     from src.retrieval.bm25_index import BM25Index

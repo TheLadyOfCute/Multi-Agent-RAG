@@ -47,6 +47,7 @@ def main() -> None:
         host=settings.api_host,
         port=settings.api_port,
         reload=settings.api_reload,
+        reload_excludes=["data/*", ".git/*", "*.pkl", "__pycache__"],
         access_log=False,
     )
 
