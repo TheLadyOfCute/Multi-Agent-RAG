@@ -24,33 +24,7 @@ from src.utils.retrieval_debug import chunk_dedup_key, merge_retriever_sources
 
 
 class RetrievalCoordinator(BaseAgent):
-    """
-    Retrieval Coordinator - Manages retrieval swarm.
-    
-    Spawns multiple retrieval agents to search for relevant chunks
-    using different methods (vector, keyword, graph). Aggregates
-    and deduplicates results.
-    
-    Attributes:
-        vector_agent: Vector search agent (semantic)
-        keyword_agent: Keyword search agent (BM25)
-        graph_agent: Graph search agent (relationships)
-        top_k: Number of chunks to return
-        
-    Example:
-        >>> coordinator = RetrievalCoordinator(
-        ...     vector_agent=vector_agent,
-        ...     keyword_agent=keyword_agent,
-        ...     graph_agent=graph_agent
-        ... )
-        >>> 
-        >>> state = AgentState(query="What is Python?")
-        >>> result = coordinator.run(state)
-        >>> 
-        >>> print(len(result.chunks))  # 10 (top_k)
-        >>> print(result.retrieval_round)  # 0 or incremented
-    """
-    
+
     def __init__(
         self,
         vector_agent: BaseAgent = None,
@@ -58,23 +32,6 @@ class RetrievalCoordinator(BaseAgent):
         graph_agent: BaseAgent = None,
         top_k: int = None
     ):
-        """
-        Initialize Retrieval Coordinator.
-        
-        Args:
-            vector_agent: Vector search agent instance
-            keyword_agent: Keyword search agent instance
-            graph_agent: Graph search agent instance
-            top_k: Number of top chunks to return (default: from config)
-        
-        Example:
-            >>> coordinator = RetrievalCoordinator(
-            ...     vector_agent=VectorAgent(),
-            ...     keyword_agent=KeywordAgent(),
-            ...     graph_agent=GraphAgent(),
-            ...     top_k=15
-            ... )
-        """
         super().__init__(name="retrieval_coordinator", version="1.0.0")
         
         self.vector_agent = vector_agent
@@ -91,24 +48,7 @@ class RetrievalCoordinator(BaseAgent):
         )
     
     def execute(self, state: AgentState) -> AgentState:
-        """
-        Execute retrieval coordination.
 
-        Priority order:
-        1. sub_query_plans path — used when state.sub_query_plans is set
-           by the new Planner v3 (per-sub-query retrieval plans).
-        2. Planner-selected path — used when state.selected_retrievers is
-           populated (Planner v2, shared retriever set for all sub-queries).
-        3. Strategy-driven path — legacy fallback when neither is set.
-
-        Args:
-            state: Current agent state with query, sub_query_plans /
-                   selected_retrievers / retriever_quotas (and optionally
-                   strategy, sub_queries)
-
-        Returns:
-            Updated state with chunks
-        """
         try:
             current_round = state.retrieval_round
 
@@ -119,7 +59,7 @@ class RetrievalCoordinator(BaseAgent):
                 level="info"
             )
 
-            # ── Path 1: Per-sub-query plans (new v3 path) ─────────────
+            # ── Path 1: Per-sub-query plans ─────────────
             if state.sub_query_plans:
                 all_results = self._retrieve_by_sub_query_plans(state)
                 path_used   = "sub-query-plans"
@@ -127,7 +67,7 @@ class RetrievalCoordinator(BaseAgent):
                     state.metadata.get("retriever_results", {})
                 )
 
-            # ── Path 2: Planner-selected retrievers (v2 compat) ───────
+            # ── Path 2: Planner-selected retrievers  ───────
             elif state.selected_retrievers:
                 all_results = self._retrieve_by_planner_selection(state)
                 path_used   = "planner-selection"
@@ -195,24 +135,7 @@ class RetrievalCoordinator(BaseAgent):
     # ── Per-sub-query plans retrieval (v3 primary path) ──────────────
 
     def _retrieve_by_sub_query_plans(self, state: AgentState) -> List[Chunk]:
-        """
-        Execute retrieval according to per-sub-query plans produced by
-        PlannerAgent v3.
-
-        Each plan entry:
-            {"query": str, "retrievers": List[str], "quotas": Dict[str,int]}
-
-        Every sub-query uses its own set of retrievers with its own
-        per-retriever quota. Results from all sub-queries are merged
-        into a single flat list; deduplication happens in the caller.
-
-        Args:
-            state: AgentState with sub_query_plans populated.
-
-        Returns:
-            Flat list of Chunk objects tagged with retriever / sub-query
-            provenance metadata.
-        """
+        
         agent_map: Dict[str, Any] = {
             "vector":  self.vector_agent,
             "keyword": self.keyword_agent,

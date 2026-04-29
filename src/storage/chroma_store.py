@@ -15,6 +15,7 @@ class ChromaVectorStore:
     """Persistent vector storage using a single flat chunk collection."""
 
     COLLECTION_NAME = "chunks"
+    _startup_log_printed = False
 
     def __init__(self, persist_directory: str = "data/chroma_db"):
         import chromadb
@@ -33,20 +34,24 @@ class ChromaVectorStore:
 
         self._init_collection()
 
-        print(f"ChromaDB initialized: {persist_directory}")
-        print(f"   Collection: {self.COLLECTION_NAME}")
+        if not ChromaVectorStore._startup_log_printed:
+            print(f"ChromaDB initialized: {persist_directory}")
+            print(f"   Collection: {self.COLLECTION_NAME}")
+            ChromaVectorStore._startup_log_printed = True
 
     def _init_collection(self) -> None:
         """Initialize or get the flat chunk collection."""
         try:
             self.collection = self.client.get_collection(self.COLLECTION_NAME)
-            print(f"   Loaded existing chunks collection ({self.collection.count()} vectors)")
+            if not ChromaVectorStore._startup_log_printed:
+                print(f"   Loaded existing chunks collection ({self.collection.count()} vectors)")
         except Exception:
             self.collection = self.client.create_collection(
                 name=self.COLLECTION_NAME,
                 metadata={"description": "Flat chunks for retrieval"},
             )
-            print("   Created new chunks collection")
+            if not ChromaVectorStore._startup_log_printed:
+                print("   Created new chunks collection")
 
     def add_chunks(self, chunks: List[Chunk], filename: str = "unknown") -> None:
         """Add flat chunks with filename metadata."""

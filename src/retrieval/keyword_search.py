@@ -19,7 +19,7 @@ class KeywordSearchAgent(BaseAgent):
         self,
         vector_store: ChromaVectorStore,
         index_path: str = "data/bm25_index.pkl",
-        bm25_index: Optional["BM25Index"] = None,
+        bm25_index: Optional[BM25Index] = None,
     ):
         super().__init__(name="keyword_search", version="1.0.0")
         self.vector_store = vector_store

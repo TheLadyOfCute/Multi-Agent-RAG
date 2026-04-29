@@ -8,10 +8,7 @@ from typing import List, Dict, Any, Optional
 import pickle
 from pathlib import Path
 import re
-try:
-    from rank_bm25 import BM25Okapi
-except Exception:  # pragma: no cover - optional dependency fallback
-    BM25Okapi = Any  # type: ignore[assignment]
+from rank_bm25 import BM25Okapi
 
 from src.models.chunk import Chunk
 from src.storage.chroma_store import ChromaVectorStore
@@ -154,67 +151,63 @@ class BM25Index:
         query: str,
         top_k: int = 10
     ) -> List[Dict[str, Any]]:
-        """
-        Search index with BM25 scoring.
-        
-        Args:
-            query: Search query
-            top_k: Number of results to return
-        
-        Returns:
-            List of results with chunk_id, text, score, metadata
-        
-        Raises:
-            BM25IndexError: If search fails
-        
-        Example:
-            >>> results = index.search("machine learning", top_k=5)
-            >>> for r in results:
-            ...     print(f"{r['score']:.3f}: {r['text'][:50]}...")
-        """
-        if self.bm25 is None:
-            raise BM25IndexError(
-                message="BM25 index not built. Call build_from_vector_store() first.",
-                details={}
-            )
         
         try:
-            # Tokenize query
+            # 对查询文本进行分词，得到 BM25 可用的分词列表
             query_tokens = self._tokenize(query)
             print(f"\nBM25 Query Tokens: {query_tokens}")
-            
-            # Get BM25 scores
+
+            # 计算每个文档块的 BM25 分数
             scores = self.bm25.get_scores(query_tokens)
-            
-            # Get top-k indices
+
+            # 按分数从高到低排序，并取前 top_k 个索引
             top_indices = scores.argsort()[::-1][:top_k]
-            
-            # Format results
+
+          
             results = []
+
+            # 遍历 top_k 文档块索引，构造返回结果
             for idx in top_indices:
+                # 获取当前文档块 ID
                 chunk_id = self.chunk_ids[idx]
+
+                # 根据 chunk_id 获取文档块内容和元数据
                 chunk_data = self.chunk_metadata[chunk_id]
+
+                # 将当前 BM25 分数转换为普通浮点数
                 score = float(scores[idx])
-                
-                # Only return chunks with non-zero scores
+
+                # 只返回分数大于 0 的文档块
                 if score > 0:
+                    # 复制元数据，避免直接修改原始数据
                     metadata = dict(chunk_data['metadata'] or {})
+
+                    # 标记当前结果来源为关键词检索
                     metadata.setdefault("source", "keyword")
+
+                    # 将当前文档块整理为标准结果格式
                     results.append({
                         'chunk_id': chunk_id,
                         'text': chunk_data['text'],
                         'score': score,
                         'metadata': metadata
                     })
-            
+
+            # 记录 BM25 检索返回的结果数量
             self.logger.debug(f"BM25 search returned {len(results)} results")
+
+            # 打印 BM25 检索概要信息
             print(f"\nBM25 Search (top_k={top_k})")
             print(f"   Found {len(results)} results")
+
+            # 逐条打印排序后的检索结果摘要
             for rank, result in enumerate(results, start=1):
                 print(format_ranked_chunk_line(rank, result))
-            
+
+            # 返回检索结果列表
             return results
-            
+
+        # 捕获检索过程中的异常，并封装为 BM25IndexError
         except Exception as e:
             raise BM25IndexError(
                 message=f"BM25 search failed: {str(e)}",
