@@ -1,10 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(docker compose *)",
-      "Bash(python -c ' *)",
-      "Bash(conda run -n MutiRag python -c ' *)",
-      "Bash(conda run *)"
+      "*"
     ]
   }
 }

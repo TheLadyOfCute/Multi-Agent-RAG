@@ -2,4 +2,4 @@
 .vscode
 *_pycache__
 *__pycache__
-web
+web/
