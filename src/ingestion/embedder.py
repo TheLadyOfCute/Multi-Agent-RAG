@@ -146,18 +146,3 @@ class EmbeddingGenerator:
                 details={"query": query[:100], "error": str(exc)},
             ) from exc
 
-    def get_embedding_dimension(self) -> int:
-        return self.embedding_dimension
-
-    def get_stats(self) -> dict[str, Any]:
-        return {
-            "total_embeddings": self.total_embeddings,
-            "model": self.model,
-            "batch_size": self.batch_size,
-            "embedding_dimension": self.get_embedding_dimension(),
-        }
-
-    def reset_stats(self) -> None:
-        self.total_embeddings = 0
-        self.total_tokens = 0
-        self.logger.info("Embedding generator stats reset")

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from .database import DatabaseManager, get_db_manager
-
 
 def __getattr__(name: str):
     if name == "ChromaVectorStore":
@@ -13,4 +11,4 @@ def __getattr__(name: str):
     raise AttributeError(name)
 
 
-__all__ = ["ChromaVectorStore", "DatabaseManager", "get_db_manager"]
+__all__ = ["ChromaVectorStore"]

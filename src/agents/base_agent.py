@@ -19,7 +19,6 @@ Example:
 
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
 from datetime import datetime
 
 from src.models.agent_state import AgentState
@@ -166,88 +165,6 @@ class BaseAgent(ABC):
         )
         self.metrics["last_execution_time"] = execution_time
     
-    def get_metrics(self) -> Dict[str, Any]:
-        """
-        Get current agent metrics.
-        
-        Returns:
-            Dictionary containing performance metrics:
-            - total_calls: Total number of executions
-            - successful_calls: Number of successful executions
-            - failed_calls: Number of failed executions
-            - success_rate: Success rate as percentage
-            - total_time_seconds: Total execution time
-            - average_time_seconds: Average execution time
-            - last_execution_time: Most recent execution time
-            - created_at: Agent creation timestamp
-        
-        Example:
-            >>> metrics = agent.get_metrics()
-            >>> print(f"Success rate: {metrics['success_rate']:.1f}%")
-        """
-        success_rate = 0.0
-        if self.metrics["total_calls"] > 0:
-            success_rate = (
-                self.metrics["successful_calls"] / self.metrics["total_calls"]
-            ) * 100
-        
-        return {
-            "agent_name": self.name,
-            "agent_version": self.version,
-            "total_calls": self.metrics["total_calls"],
-            "successful_calls": self.metrics["successful_calls"],
-            "failed_calls": self.metrics["failed_calls"],
-            "success_rate": round(success_rate, 2),
-            "total_time_seconds": round(self.metrics["total_time_seconds"], 2),
-            "average_time_seconds": round(self.metrics["average_time_seconds"], 3),
-            "last_execution_time": self.metrics["last_execution_time"],
-            "created_at": self.metrics["created_at"]
-        }
-    
-    def reset_metrics(self) -> None:
-        """
-        Reset all metrics to initial state.
-        
-        Useful for testing or starting fresh measurements.
-        Preserves created_at timestamp.
-        
-        Example:
-            >>> agent.reset_metrics()
-            >>> assert agent.get_metrics()['total_calls'] == 0
-        """
-        created_at = self.metrics["created_at"]
-        
-        self.metrics = {
-            "total_calls": 0,
-            "successful_calls": 0,
-            "failed_calls": 0,
-            "total_time_seconds": 0.0,
-            "average_time_seconds": 0.0,
-            "last_execution_time": None,
-            "created_at": created_at
-        }
-        
-        self.log("Metrics reset", level="debug")
-    
-    def get_info(self) -> Dict[str, str]:
-        """
-        Get agent information.
-        
-        Returns:
-            Dictionary with agent metadata:
-            - name: Agent name
-            - version: Agent version
-            - class: Agent class name
-        
-        Example:
-            >>> info = agent.get_info()
-            >>> print(f"Agent: {info['name']} v{info['version']}")
-        """
-        return {
-            "name": self.name,
-            "version": self.version,
-            "class": self.__class__.__name__
-        }
     
     def __repr__(self) -> str:
         """

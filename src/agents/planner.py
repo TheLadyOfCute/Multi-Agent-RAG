@@ -352,18 +352,3 @@ class PlannerAgent(BaseAgent):
         """Rough complexity proxy from number of distinct retrievers."""
         return {1: 0.2, 2: 0.5, 3: 0.8}.get(len(retrievers), 0.5)
 
-    # ------------------------------------------------------------------
-    # Debug helper (kept from v2)
-    # ------------------------------------------------------------------
-
-    def analyze_query_details(self, query: str) -> Dict:
-        """Return full routing details for a single query (debugging)."""
-        plans = self._plan_for_sub_queries([query])
-        plan  = plans[0] if plans else {}
-        return {
-            "query":               query,
-            "selected_retrievers": plan.get("retrievers", []),
-            "retriever_quotas":    plan.get("quotas", {}),
-            "strategy":            "simple",
-            "complexity":          self._infer_complexity(plan.get("retrievers", [])),
-        }

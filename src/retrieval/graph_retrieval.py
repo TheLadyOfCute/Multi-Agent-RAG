@@ -2,11 +2,9 @@
 Graph-based retrieval using knowledge-graph paths and entity expansion.
 """
 
-from typing import Dict, List, Set
-import networkx as nx
+from typing import Any, Dict, List, Set
 
 from src.graph.entity_extractor import EntityExtractor
-from src.graph.graph_builder import KnowledgeGraph
 from src.models.agent_state import Chunk
 from src.utils.retrieval_debug import format_ranked_chunk_line
 
@@ -25,7 +23,7 @@ class GraphRetrieval:
 
     def __init__(
         self,
-        knowledge_graph: KnowledgeGraph,
+        knowledge_graph: Any,
         vector_store,
     ):
         self.kg = knowledge_graph
@@ -37,7 +35,7 @@ class GraphRetrieval:
         top_k: int = 10,
         expand_neighbors: bool = True,
     ) -> List[Chunk]:
-        """Search the knowledge graph using query entities from EntityExtractor."""
+        #提取查询中的实体，并进行规范化处理
         raw_query_entities = self._extract_query_entities(query)
         print(f"\nGraph Query Entities (raw): {raw_query_entities}")
 
@@ -47,7 +45,7 @@ class GraphRetrieval:
                 f"raw_entities={raw_query_entities}"
             )
             return []
-
+        #过滤出存在于知识图谱中的实体，并进行匹配
         query_entities = self._filter_entities_in_graph(raw_query_entities)
         print(f"Graph Query Entities (matched_in_graph): {query_entities}")
 
@@ -114,7 +112,9 @@ class GraphRetrieval:
         entities = extractor.extract(query)
         normalized = []
         seen = set()
+        # 遍历提取出的实体对象
         for entity in entities:
+             # 读取实体的 normalized 字段，并统一转为小写字符串
             value = str(getattr(entity, "normalized", "")).strip().lower()
             if not value or value in seen:
                 continue
@@ -123,10 +123,8 @@ class GraphRetrieval:
         return normalized
 
     def _filter_entities_in_graph(self, entities: List[str]) -> List[str]:
-        """Keep only entities that exist as nodes in the knowledge graph."""
-        if hasattr(self.kg, "match_entities"):
-            return self.kg.match_entities(entities)
-        return [entity for entity in entities if entity in self.kg.graph]
+        #过滤出存在于知识图谱中的实体，确保后续检索基于有效节点
+        return self.kg.match_entities(entities)
 
     def _search_single_entity_expansion(
         self,
@@ -215,38 +213,7 @@ class GraphRetrieval:
         max_length: int = 3,
     ) -> List[Dict]:
         """Find paths between two graph entities."""
-        if hasattr(self.kg, "find_paths"):
-            return self.kg.find_paths(source, target, max_length=max_length)
-
-        if source not in self.kg.graph or target not in self.kg.graph:
-            return []
-
-        try:
-            paths = list(nx.all_simple_paths(self.kg.graph, source, target, cutoff=max_length))
-        except nx.NetworkXNoPath:
-            return []
-
-        path_dicts = []
-        for path in paths:
-            relations = []
-            for i in range(len(path) - 1):
-                edge_data = self.kg.graph[path[i]][path[i + 1]]
-                relations.append(
-                    {
-                        "from": path[i],
-                        "to": path[i + 1],
-                        "relation": edge_data.get("relation", "related_to"),
-                        "confidence": edge_data.get("confidence", 0.5),
-                    }
-                )
-            path_dicts.append(
-                {
-                    "path": path,
-                    "length": len(path),
-                    "relations": relations,
-                }
-            )
-        return path_dicts
+        return self.kg.find_paths(source, target, max_length=max_length)
 
     def _rank_paths(self, paths: List[Dict]) -> List[Dict]:
         """Rank candidate paths by length, confidence, and relation specificity."""
@@ -271,23 +238,7 @@ class GraphRetrieval:
 
     def _expand_with_neighbors(self, entities: Set[str], k: int = 1) -> Set[str]:
         """Expand entity set with predecessors and successors up to k hops."""
-        if hasattr(self.kg, "expand_entities"):
-            return self.kg.expand_entities(entities, k=k)
-        expanded = set(entities)
-        frontier = set(entities)
-        for _ in range(k):
-            next_frontier = set()
-            for entity in frontier:
-                if entity not in self.kg.graph:
-                    continue
-                next_frontier.update(self.kg.graph.successors(entity))
-                next_frontier.update(self.kg.graph.predecessors(entity))
-            next_frontier -= expanded
-            expanded.update(next_frontier)
-            frontier = next_frontier
-            if not frontier:
-                break
-        return expanded
+        return self.kg.expand_entities(entities, k=k)
 
     def _retrieve_chunks_by_entities(
         self,
@@ -341,28 +292,7 @@ class GraphRetrieval:
         paths: List[Dict] = None,
     ) -> List[str]:
         """Collect ordered chunk evidence from matching nodes and edges."""
-        if hasattr(self.kg, "collect_evidence_chunk_ids"):
-            return self.kg.collect_evidence_chunk_ids(entities, paths=paths)
-
-        ordered_ids = []
-        seen = set()
-
-        def add_ids(chunk_ids):
-            for chunk_id in chunk_ids or []:
-                if chunk_id and chunk_id not in seen:
-                    ordered_ids.append(chunk_id)
-                    seen.add(chunk_id)
-
-        for entity in sorted(entities):
-            if entity in self.kg.graph:
-                add_ids(self.kg.graph.nodes[entity].get("chunk_ids", []))
-
-        for source, target, data in self.kg.graph.edges(data=True):
-            if source in entities and target in entities:
-                add_ids(data.get("chunk_ids", []))
-                add_ids(item.get("chunk_id") for item in data.get("evidence", []))
-
-        return ordered_ids
+        return self.kg.collect_evidence_chunk_ids(entities, paths=paths)
 
     def _rank_by_path_relevance(
         self,

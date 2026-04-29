@@ -10,7 +10,6 @@ Exception Hierarchy:
     ├── AgentExecutionError
     ├── RetrievalError
     ├── ValidationError
-    ├── GenerationError
     └── OrchestrationError
 """
 
@@ -166,44 +165,6 @@ class ValidationError(AgenticRAGException):
         super().__init__(full_message, details)
 
 
-class GenerationError(AgenticRAGException):
-    """
-    Raised when answer generation fails.
-    
-    This exception indicates failures during the answer generation phase:
-    - LLM API errors
-    - Invalid responses
-    - Token limit exceeded
-    - Generation quality issues
-    
-    Args:
-        message: Description of generation failure
-        llm_error: Optional underlying LLM error message
-        details: Optional error context
-    
-    Attributes:
-        llm_error: The underlying LLM error (if any)
-        message: Error description
-        details: Additional context
-    
-    Example:
-        >>> raise GenerationError(
-        ...     message="Failed to generate answer",
-        ...     llm_error="Rate limit exceeded",
-        ...     details={"model": "claude-3-5-sonnet", "tokens": 100000}
-        ... )
-    """
-    
-    def __init__(self, message: str, llm_error: str = None, details: dict = None):
-        self.llm_error = llm_error
-        
-        full_message = f"Generation failed: {message}"
-        if llm_error:
-            full_message += f" | LLM Error: {llm_error}"
-        
-        super().__init__(full_message, details)
-
-
 class OrchestrationError(AgenticRAGException):
     """
     Raised when workflow orchestration fails.
@@ -238,43 +199,5 @@ class OrchestrationError(AgenticRAGException):
         full_message = f"Orchestration failed: {message}"
         if node_name:
             full_message = f"Orchestration failed at node '{node_name}': {message}"
-        
-        super().__init__(full_message, details)
-
-
-class ConfigurationError(AgenticRAGException):
-    """
-    Raised when system configuration is invalid.
-    
-    This exception indicates problems with system configuration:
-    - Missing required environment variables
-    - Invalid API keys
-    - Missing required dependencies
-    - Invalid configuration values
-    
-    Args:
-        message: Description of configuration issue
-        config_key: Optional configuration key that's problematic
-        details: Optional error context
-    
-    Attributes:
-        config_key: The configuration key that's invalid
-        message: Error description
-        details: Additional context
-    
-    Example:
-        >>> raise ConfigurationError(
-        ...     message="Missing API key",
-        ...     config_key="ANTHROPIC_API_KEY",
-        ...     details={"required": True, "found": False}
-        ... )
-    """
-    
-    def __init__(self, message: str, config_key: str = None, details: dict = None):
-        self.config_key = config_key
-        
-        full_message = f"Configuration error: {message}"
-        if config_key:
-            full_message = f"Configuration error for '{config_key}': {message}"
         
         super().__init__(full_message, details)

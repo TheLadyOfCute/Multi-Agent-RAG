@@ -2,7 +2,7 @@
 Configuration management for Agentic RAG System.
 """
 
-from typing import Optional, List
+from typing import Optional
 from pydantic_settings import BaseSettings
 from pydantic import Field, field_validator, ConfigDict
 
@@ -80,44 +80,6 @@ class Settings(BaseSettings):
             raise ValueError(f"log_level must be one of: {valid_levels}")
         return v_upper
     
-    def get_allowed_file_types_list(self) -> List[str]:
-        """Get allowed file types as list."""
-        return [ext.strip() for ext in self.allowed_file_types.split(",")]
-    
-    def get_database_config(self) -> dict:
-        """Get database configuration as dictionary."""
-        return {
-            "url": self.database_url,
-            "pool_size": 10,
-            "max_overflow": 20,
-            "pool_timeout": 30
-        }
-    
-    def get_redis_config(self) -> dict:
-        """Get Redis configuration as dictionary."""
-        return {
-            "url": self.redis_url,
-            "decode_responses": True,
-            "socket_timeout": 5,
-            "socket_connect_timeout": 5
-        }
-    
-    def get_chroma_config(self) -> dict:
-        """Get ChromaDB configuration as dictionary."""
-        return {
-            "persist_directory": self.chroma_persist_dir,
-            "embedding_dimension": self.embedding_dimension
-        }
-    
-    def get_llm_config(self) -> dict:
-        """Get LLM configuration as dictionary."""
-        return {
-            "model": self.llm_model,
-            "temperature": self.llm_temperature,
-            "max_tokens": self.llm_max_tokens,
-            "api_key": self.dashscope_api_key,
-            "base_url": self.dashscope_base_url
-        }
 
 
 # Global settings instance
@@ -126,11 +88,4 @@ settings = Settings()
 
 def get_settings() -> Settings:
     """Get global settings instance."""
-    return settings
-
-
-def reload_settings() -> Settings:
-    """Reload settings from environment."""
-    global settings
-    settings = Settings()
     return settings

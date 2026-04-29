@@ -79,36 +79,3 @@ class SimpleEvaluator:
         
         return scores
     
-    def evaluate_batch(
-        self,
-        questions: List[str],
-        answers: List[str],
-        chunks_list: List[List[Any]],
-        metadata_list: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """
-        Evaluate multiple Q&A pairs.
-        
-        Returns:
-            Aggregated statistics
-        """
-        all_scores = []
-        
-        for q, a, chunks, meta in zip(questions, answers, chunks_list, metadata_list):
-            scores = self.evaluate_answer(q, a, chunks, meta)
-            scores['query'] = q  # ✅ ADD THIS LINE
-            all_scores.append(scores)
-        
-        # Aggregate
-        aggregated = {
-            'total_evaluated': len(all_scores),
-            'avg_citation_rate': sum(s['has_citations'] for s in all_scores) / len(all_scores),
-            'avg_word_count': sum(s['word_count'] for s in all_scores) / len(all_scores),
-            'avg_context_usage': sum(s['context_usage_rate'] for s in all_scores) / len(all_scores),
-            'avg_quality_score': sum(s['final_score'] for s in all_scores) / len(all_scores),
-            'improvement_rate': sum(s['was_improved'] for s in all_scores) / len(all_scores),
-            'avg_overall': sum(s['overall'] for s in all_scores) / len(all_scores),
-            'detailed_scores': all_scores
-        }
-        
-        return aggregated

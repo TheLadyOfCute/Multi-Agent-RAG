@@ -20,13 +20,7 @@ from langchain_openai import ChatOpenAI
 from src.agents.base_agent import BaseAgent
 from src.models.agent_state import AgentState, Strategy
 from src.config import get_settings
-from src.utils.exceptions import AgenticRAGException
 from src.utils.llm_content import message_content_to_text
-
-
-class QueryDecomposerError(AgenticRAGException):
-    """Error during query decomposition."""
-    pass
 
 
 class QueryDecomposer(BaseAgent):

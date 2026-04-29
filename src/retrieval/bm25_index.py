@@ -263,10 +263,6 @@ class BM25Index:
 
         return tokens
 
-    def tokenize_query(self, query: str) -> List[str]:
-        """Expose BM25 query tokenization for debugging and tests."""
-        return self._tokenize(query)
-    
     def save(self) -> None:
         """
         Save BM25 index to disk.

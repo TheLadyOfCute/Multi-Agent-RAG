@@ -225,58 +225,6 @@ class RAGASEvaluator:
             answer_relevancy = raw.get("response_relevancy")
         return _as_float(answer_relevancy)
 
-    def load_test_dataset(self, filepath: str) -> List[Dict[str, Any]]:
-        """Backward-compatible loader for older tests/scripts."""
-        import json
-
-        with open(filepath, "r", encoding="utf-8") as file:
-            data = json.load(file)
-        if isinstance(data, dict) and "test_cases" in data:
-            return data["test_cases"]
-        if isinstance(data, list):
-            return data
-        return []
-
-    HONESTY_PHRASES = [
-        "do not contain information",
-        "not found in",
-        "not available in",
-        "does not mention",
-        "no information about",
-        "not covered in",
-        "文档中未找到",
-        "没有相关信息",
-        "无法从文档中",
-    ]
-
-    def check_production_gate(
-        self, scores: Dict[str, float], answer: str = ""
-    ) -> Dict[str, Any]:
-        faithfulness_threshold = 0.5
-        overall_threshold = 0.7
-        passed = True
-        reasons = []
-        is_honest_non_answer = any(
-            phrase in (answer or "").lower() for phrase in self.HONESTY_PHRASES
-        )
-
-        if scores.get("faithfulness", 0.0) < faithfulness_threshold:
-            passed = False
-            reasons.append("Faithfulness below threshold")
-
-        if scores.get("overall", 0.0) < overall_threshold and not is_honest_non_answer:
-            passed = False
-            reasons.append("Overall below threshold")
-
-        if not reasons:
-            reasons.append("All checks passed")
-
-        return {
-            "passed": passed,
-            "reasons": reasons,
-            "scores": scores,
-            "is_honest_non_answer": is_honest_non_answer,
-        }
 
 
 def _as_float(value: Any) -> Optional[float]:

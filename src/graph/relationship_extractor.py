@@ -4,7 +4,7 @@ Extract relationships between entities using dependency parsing.
 """
 
 import spacy
-from typing import List, Tuple, Dict, Set
+from typing import List, Tuple, Dict
 from src.graph.entity_extractor import Entity
 import re
 from collections import Counter
@@ -307,87 +307,6 @@ class RelationshipExtractor:
         
         return None
     
-    def _extract_pattern_based(
-        self,
-        text: str,
-        entity_texts: Dict[str, Entity]
-    ) -> List[Relationship]:
-        """Extract relationships using regex patterns."""
-        relationships = []
-        
-        # Pattern: X uses Y
-        pattern_uses = r'(\w+(?:\s+\w+)?)\s+(?:use|uses|using)\s+(\w+(?:\s+\w+)?)'
-        for match in re.finditer(pattern_uses, text, re.IGNORECASE):
-            source, target = match.group(1).lower(), match.group(2).lower()
-            if source in entity_texts and target in entity_texts:
-                rel = Relationship(source, 'uses', target, extraction_method="pattern")
-                relationships.append(rel)
-        
-        # Pattern: X enables Y
-        pattern_enables = r'(\w+(?:\s+\w+)?)\s+(?:enable|enables|enabling)\s+(\w+(?:\s+\w+)?)'
-        for match in re.finditer(pattern_enables, text, re.IGNORECASE):
-            source, target = match.group(1).lower(), match.group(2).lower()
-            if source in entity_texts and target in entity_texts:
-                rel = Relationship(source, 'enables', target, extraction_method="pattern")
-                relationships.append(rel)
-        
-        # Pattern: X improves Y
-        pattern_improves = r'(\w+(?:\s+\w+)?)\s+(?:improve|improves|improving)\s+(\w+(?:\s+\w+)?)'
-        for match in re.finditer(pattern_improves, text, re.IGNORECASE):
-            source, target = match.group(1).lower(), match.group(2).lower()
-            if source in entity_texts and target in entity_texts:
-                rel = Relationship(source, 'improves', target, extraction_method="pattern")
-                relationships.append(rel)
-        
-        # Pattern: X for Y (simple co-occurrence)
-        pattern_for = r'(\w+(?:\s+\w+)?)\s+for\s+(\w+(?:\s+\w+)?)'
-        for match in re.finditer(pattern_for, text, re.IGNORECASE):
-            source, target = match.group(1).lower(), match.group(2).lower()
-            if source in entity_texts and target in entity_texts:
-                rel = Relationship(source, 'for', target, extraction_method="pattern")
-                relationships.append(rel)
-        
-        return relationships
-    
-    def extract_from_chunks(
-        self,
-        chunks: List[any],
-        chunk_entities: Dict[str, List[Entity]]
-    ) -> List[Relationship]:
-        """
-        Extract relationships from multiple chunks.
-        
-        Args:
-            chunks: List of Chunk objects
-            chunk_entities: Dict mapping chunk_id to entities
-        
-        Returns:
-            List of all relationships
-        """
-        all_relationships = []
-        
-        for chunk in chunks:
-            entities = chunk_entities.get(chunk.chunk_id, [])
-            
-            if len(entities) < 2:
-                continue  # Need at least 2 entities for a relationship
-            
-            # Split into sentences
-            doc = self.nlp(chunk.text)
-            for sent in doc.sents:
-                # Filter entities in this sentence
-                sent_entities = [
-                    e for e in entities
-                    if e.start >= sent.start_char and e.end <= sent.end_char
-                ]
-                
-                if len(sent_entities) >= 2:
-                    rels = self.extract_from_sentence(sent.text, sent_entities)
-                    all_relationships.extend(rels)
-        
-        self.print_method_stats(all_relationships)
-        return all_relationships
-
     def get_method_stats(self, relationships: List[Relationship]) -> Dict[str, int]:
         """Count relationships by extraction method."""
         counts = Counter(
@@ -409,20 +328,4 @@ class RelationshipExtractor:
             f"pattern={stats['pattern']}, "
             f"dependency={stats['dependency']}"
         )
-    
-    def deduplicate_relationships(
-        self,
-        relationships: List[Relationship]
-    ) -> List[Relationship]:
-        """Remove duplicate relationships."""
-        seen = set()
-        unique = []
-        
-        for rel in relationships:
-            key = rel.to_tuple()
-            if key not in seen:
-                seen.add(key)
-                unique.append(rel)
-        
-        return unique
     

@@ -46,11 +46,6 @@ class Neo4jGraphStore:
                 "FOR (e:Entity) REQUIRE e.name IS UNIQUE"
             )
 
-    def clear(self) -> None:
-        """Delete all graph data."""
-        with self.driver.session() as session:
-            session.run("MATCH (n) DETACH DELETE n")
-
     def is_empty(self) -> bool:
         with self.driver.session() as session:
             row = session.run("MATCH (e:Entity) RETURN count(e) AS count").single()
@@ -173,25 +168,6 @@ class Neo4jGraphStore:
                 evidence=evidence,
                 evidence_json=evidence_json,
             )
-
-    def get_node_names(self) -> List[str]:
-        with self.driver.session() as session:
-            rows = session.run("MATCH (e:Entity) RETURN e.name AS name")
-            return [row["name"] for row in rows]
-
-    def get_top_entities(self, n: int = 10, metric: str = "degree") -> List[tuple[str, float]]:
-        """Return top entities by graph degree for sidebar display."""
-        with self.driver.session() as session:
-            rows = session.run(
-                """
-                MATCH (e:Entity)
-                RETURN e.name AS name, count { (e)--() } AS degree
-                ORDER BY degree DESC, name ASC
-                LIMIT $limit
-                """,
-                limit=n,
-            )
-            return [(row["name"], float(row["degree"])) for row in rows]
 
     def match_entities(self, entities: List[str]) -> List[str]:
         """Return extracted entity names that exist in Neo4j, preserving input order."""

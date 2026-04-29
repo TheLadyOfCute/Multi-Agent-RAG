@@ -12,8 +12,7 @@ RerankerAgent (src/agents/reranker.py) which sits as a dedicated
 LangGraph node between Synthesis and Validator.
 """
 
-from typing import List, Dict, Any
-import hashlib
+from typing import List, Dict
 from collections import defaultdict
 
 from src.agents.base_agent import BaseAgent
@@ -180,15 +179,3 @@ class SynthesisAgent(BaseAgent):
 
         return unique
 
-    def _compute_hash(self, text: str) -> str:
-        """MD5 hash of normalised (lowercase, collapsed whitespace) text."""
-        normalised = " ".join(text.lower().split())
-        return hashlib.md5(normalised.encode()).hexdigest()
-
-    # ------------------------------------------------------------------
-    # Public helper
-    # ------------------------------------------------------------------
-
-    def get_synthesis_stats(self, state: AgentState) -> Dict[str, Any]:
-        """Return synthesis metadata from state (for UI / debugging)."""
-        return state.metadata.get("synthesis", {})

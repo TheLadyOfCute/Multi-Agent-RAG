@@ -191,14 +191,6 @@ class _UnavailableEmbedder:
     def __init__(self, exc: ModuleNotFoundError):
         self.exc = exc
 
-    def get_stats(self) -> dict:
-        return {
-            "total_embeddings": 0,
-            "model": "unavailable",
-            "batch_size": 0,
-            "embedding_dimension": 0,
-        }
-
     def generate(self, texts):
         raise ModuleNotFoundError("openai package is required for embedding generation") from self.exc
 

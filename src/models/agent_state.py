@@ -73,27 +73,3 @@ class AgentState(BaseModel):
         arbitrary_types_allowed = True
         use_enum_values = True
     
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dict for logging"""
-        return {
-            "query": self.query,
-            "complexity": self.complexity,
-            "strategy": self.strategy,
-            "num_chunks": len(self.chunks),
-            "retrieval_round": self.retrieval_round,
-            "validation_status": self.validation_status,
-            "has_answer": self.answer is not None,
-        }
-    
-    def add_chunk(self, chunk: Chunk) -> None:
-        """Add chunk to state"""
-        self.chunks.append(chunk)
-    
-    def get_top_chunks(self, k: int = 5) -> List[Chunk]:
-        """Get top-k chunks by score"""
-        sorted_chunks = sorted(
-            self.chunks,
-            key=lambda c: c.score or 0.0,
-            reverse=True
-        )
-        return sorted_chunks[:k]

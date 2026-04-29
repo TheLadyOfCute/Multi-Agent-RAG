@@ -87,6 +87,3 @@ class FlatChunker:
 
         return chunks
 
-    def count_tokens(self, text: str) -> int:
-        """Count tokens in text."""
-        return len(self.encoding.encode(text))

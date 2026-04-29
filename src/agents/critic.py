@@ -337,34 +337,3 @@ RECOMMENDATION:
         # Below threshold
         return CriticDecision.REGENERATE
     
-    def should_regenerate(self, state: AgentState) -> bool:
-        """
-        Check if answer should be regenerated.
-        
-        Args:
-            state: AgentState with critic results
-        
-        Returns:
-            True if regeneration needed
-        
-        Example:
-            >>> if agent.should_regenerate(state):
-            ...     # Regenerate answer
-        """
-        if not hasattr(state, 'critic_decision'):
-            return False
-        
-        # Check decision
-        if state.critic_decision != CriticDecision.REGENERATE:
-            return False
-        
-        # Check iteration limit
-        regeneration_count = state.metadata.get("regeneration_count", 0)
-        if regeneration_count >= self.max_iterations:
-            self.log(
-                f"Max iterations ({self.max_iterations}) reached, stopping",
-                level="warning"
-            )
-            return False
-        
-        return True

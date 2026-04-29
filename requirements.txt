@@ -32,7 +32,6 @@ tiktoken==0.7.0                 # ← Token counting
 # ============================================
 # KNOWLEDGE GRAPH
 # ============================================
-networkx>=3.0                   # ← Graph structures
 neo4j>=5.20.0                   # Neo4j graph database driver
 spacy>=3.5.0                    # ← NER for entity extraction
 

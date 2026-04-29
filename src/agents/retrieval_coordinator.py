@@ -14,7 +14,6 @@ Swarm Pattern:
 
 from typing import List, Dict, Any
 from collections import defaultdict
-import hashlib
 
 from src.agents.base_agent import BaseAgent
 from src.models.agent_state import AgentState, Chunk, Strategy
@@ -378,62 +377,6 @@ class RetrievalCoordinator(BaseAgent):
         self.log(f"[MULTIHOP] 总计检索 {len(all_results)} 个块", level="info")
         return all_results
     
-    def _retrieve_graph_priority(
-        self, original_query: str, sub_queries: List[str]
-    ) -> List[Chunk]:
-        """
-        关系查询：图检索优先，sub_queries 针对每个实体/关系节点。
-        若无图 agent，降级为全量 swarm。
-        """
-        self.log(
-            f"[GRAPH] 图优先检索，{len(sub_queries)} 个实体子查询",
-            level="info"
-        )
-        
-        all_results: List[Chunk] = []
-        per_query_k = max(3, self.top_k // max(len(sub_queries), 1))
-        
-        # 1. 图检索（最高优先级）
-        if self.graph_agent:
-            for i, q in enumerate(sub_queries):
-                try:
-                    chunks = self.graph_agent.search_async(q, top_k=per_query_k)
-                    for c in chunks:
-                        c.metadata["source"] = "graph"
-                        c.metadata["sub_query"] = q
-                    all_results.extend(chunks)
-                    self.log(f"[GRAPH] 图检索子查询 {i+1}: {len(chunks)} 个块", level="debug")
-                except Exception as e:
-                    self.log(f"[GRAPH] 图检索子查询 {i+1} 失败: {e}", level="warning")
-            
-            # 用原始查询再跑一次图检索
-            try:
-                extra = self.graph_agent.search_async(original_query, top_k=self.top_k)
-                for c in extra:
-                    c.metadata["source"] = "graph"
-                all_results.extend(extra)
-            except Exception:
-                pass
-        else:
-            self.log("[GRAPH] 图检索 agent 不可用，降级为全量 swarm", level="warning")
-        
-        # 2. 向量检索补充（较少配额）
-        if self.vector_agent:
-            try:
-                supplement_k = max(3, self.top_k // 3)
-                chunks = self.vector_agent.search_async(original_query, top_k=supplement_k)
-                all_results.extend(chunks)
-            except Exception as e:
-                self.log(f"[GRAPH] 向量补充检索失败: {e}", level="warning")
-        
-        # 若图 agent 完全不可用且无任何结果，降级
-        if not all_results:
-            self.log("[GRAPH] 降级为全量 swarm", level="warning")
-            all_results = self._spawn_swarm(original_query)
-        
-        self.log(f"[GRAPH] 总计检索 {len(all_results)} 个块", level="info")
-        return all_results
-    
     def _spawn_swarm(self, query: str) -> List[Chunk]:
         """Spawn retrieval swarm (private method)."""
         
@@ -469,48 +412,6 @@ class RetrievalCoordinator(BaseAgent):
         self.log(f"Swarm complete: {len(all_results)} chunks from {len(agents)} agents")
         
         return all_results
-    
-    def _execute_sequential(self, query: str) -> List[Chunk]:
-        """
-        Execute retrieval agents sequentially.
-        
-        Args:
-            query: User query string
-        
-        Returns:
-            Combined chunks from all agents
-        """
-        self.log("Executing swarm sequentially", level="debug")
-        
-        all_chunks = []
-        
-        # Execute each agent
-        agents = [
-            ("vector", self.vector_agent),
-            ("keyword", self.keyword_agent),
-            ("graph", self.graph_agent)
-        ]
-        
-        for name, agent in agents:
-            if agent is None:
-                continue
-            
-            try:
-                temp_state = AgentState(query=query)
-                result_state = agent.run(temp_state)
-                all_chunks.extend(result_state.chunks)
-                
-                self.log(
-                    f"{name} agent retrieved {len(result_state.chunks)} chunks",
-                    level="debug"
-                )
-            except Exception as e:
-                self.log(
-                    f"{name} agent failed: {str(e)}",
-                    level="warning"
-                )
-        
-        return all_chunks
     
     def _deduplicate(self, chunks: List[Chunk]) -> List[Chunk]:
         """
@@ -556,27 +457,6 @@ class RetrievalCoordinator(BaseAgent):
         
         return unique_chunks
     
-    def _hash_content(self, text: str) -> str:
-        """
-        Generate hash for content similarity.
-        
-        Uses MD5 hash of normalized text.
-        
-        Args:
-            text: Chunk text
-        
-        Returns:
-            Content hash string
-        """
-        # Normalize text (lowercase, strip whitespace)
-        normalized = text.lower().strip()
-        
-        # Remove extra whitespace
-        normalized = " ".join(normalized.split())
-        
-        # Generate hash
-        return hashlib.md5(normalized.encode()).hexdigest()
-    
     def _select_top_k(self, chunks: List[Chunk], k: int) -> List[Chunk]:
         """
         Select top-k chunks by score.
@@ -606,44 +486,3 @@ class RetrievalCoordinator(BaseAgent):
         # Return top-k
         return sorted_chunks[:k]
     
-    def retrieve_with_details(self, query: str) -> Dict[str, Any]:
-        """
-        Detailed retrieval for debugging/analysis.
-        
-        Returns breakdown of retrieval from each agent and
-        deduplication statistics.
-        
-        Args:
-            query: User query string
-        
-        Returns:
-            Dictionary with detailed retrieval info
-        
-        Example:
-            >>> details = coordinator.retrieve_with_details("What is X?")
-            >>> print(details["vector_count"])
-            >>> print(details["dedup_stats"])
-        """
-        # Execute retrieval
-        all_chunks = self._spawn_swarm(query)
-        
-        # Count by source (if agents tag chunks)
-        source_counts = defaultdict(int)
-        for chunk in all_chunks:
-            source = chunk.metadata.get("source", "unknown")
-            source_counts[source] += 1
-        
-        # Deduplicate
-        unique_chunks = self._deduplicate(all_chunks)
-        top_chunks = self._select_top_k(unique_chunks, self.top_k)
-        
-        return {
-            "query": query,
-            "total_retrieved": len(all_chunks),
-            "source_counts": dict(source_counts),
-            "unique_chunks": len(unique_chunks),
-            "duplicates_removed": len(all_chunks) - len(unique_chunks),
-            "final_chunks": len(top_chunks),
-            "top_k": self.top_k,
-            "chunks": top_chunks
-        }

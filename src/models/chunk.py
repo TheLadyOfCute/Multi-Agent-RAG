@@ -1,7 +1,6 @@
 """Unified single-chunk data model."""
 
 from dataclasses import dataclass, field
-import hashlib
 from typing import Any, Dict, List, Optional
 
 
@@ -44,30 +43,6 @@ class Chunk:
         preview = self.text[:50] + "..." if len(self.text) > 50 else self.text
         return f"[CHUNK] {preview}"
 
-    def has_embedding(self) -> bool:
-        return self.embedding is not None and len(self.embedding) > 0
-
-    def get_embedding_dimension(self) -> int:
-        if not self.has_embedding():
-            return 0
-        return len(self.embedding)
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "chunk_id": self.chunk_id,
-            "text": self.text,
-            "doc_id": self.doc_id,
-            "tokens": self.tokens,
-            "token_count": self.token_count,
-            "start_idx": self.start_idx,
-            "end_idx": self.end_idx,
-            "start_char": self.start_char,
-            "end_char": self.end_char,
-            "embedding": self.embedding,
-            "metadata": self.metadata,
-            "score": self.score,
-        }
-
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Chunk":
         clean = dict(data)
@@ -75,15 +50,3 @@ class Chunk:
         clean.pop("parent_id", None)
         clean.pop("children_ids", None)
         return cls(**clean)
-
-    def clone(self) -> "Chunk":
-        return Chunk.from_dict(self.to_dict())
-
-
-def generate_chunk_id(doc_id: str, chunk_key: str) -> str:
-    combined = f"{doc_id}_{chunk_key}"
-    return hashlib.md5(combined.encode()).hexdigest()
-
-
-def find_chunk_by_id(chunks: List[Chunk], chunk_id: str) -> Optional[Chunk]:
-    return next((c for c in chunks if c.chunk_id == chunk_id), None)

@@ -4,8 +4,7 @@ Extract named entities from text using spaCy NER.
 """
 
 import spacy
-from typing import List, Dict, Set, Tuple
-from collections import defaultdict
+from typing import List
 import re
 
 
@@ -124,58 +123,3 @@ class EntityExtractor:
         escaped = re.escape(term.lower()).replace(r"\ ", r"\s+")
         return rf"(?<!\w){escaped}(?!\w)"
     
-    def extract_from_chunks(
-        self,
-        chunks: List[any]
-    ) -> Dict[str, List[Entity]]:
-        """
-        Extract entities from multiple chunks.
-        
-        Args:
-            chunks: List of Chunk objects
-        
-        Returns:
-            Dict mapping chunk_id to entities
-        """
-        chunk_entities = {}
-        
-        for chunk in chunks:
-            entities = self.extract(chunk.text)
-            chunk_entities[chunk.chunk_id] = entities
-        
-        return chunk_entities
-    
-    def deduplicate_entities(
-        self,
-        entities: List[Entity]
-    ) -> Dict[str, Set[str]]:
-        """
-        Group and deduplicate entities by type.
-        
-        Returns:
-            Dict mapping label to set of unique entity texts
-        """
-        grouped = defaultdict(set)
-        
-        for entity in entities:
-            grouped[entity.label].add(entity.normalized)
-        
-        return dict(grouped)
-    
-    def get_entity_frequency(
-        self,
-        entities: List[Entity]
-    ) -> Dict[Tuple[str, str], int]:
-        """
-        Count entity occurrences.
-        
-        Returns:
-            Dict mapping (text, label) to frequency
-        """
-        freq = defaultdict(int)
-        
-        for entity in entities:
-            key = (entity.normalized, entity.label)
-            freq[key] += 1
-        
-        return dict(freq)

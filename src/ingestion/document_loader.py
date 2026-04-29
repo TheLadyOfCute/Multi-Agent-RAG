@@ -4,7 +4,7 @@ Document Loader - Load and extract text from various file formats.
 Supports: PDF, DOCX, TXT, MD
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any
 from pathlib import Path
 import hashlib
 from datetime import datetime
@@ -202,16 +202,3 @@ class DocumentLoader:
             "source": "file_upload",
         }
 
-    def load_batch(self, file_paths: List[str]) -> List[Document]:
-        documents = []
-
-        for file_path in file_paths:
-            try:
-                doc = self.load(file_path)
-                documents.append(doc)
-            except DocumentLoadError as e:
-                self.logger.warning(f"Skipping {file_path}: {e.message}")
-                continue
-
-        self.logger.info(f"Loaded {len(documents)}/{len(file_paths)} documents")
-        return documents
