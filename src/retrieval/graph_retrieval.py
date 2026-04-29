@@ -148,10 +148,11 @@ class GraphRetrieval:
             print(f"  seed={seed}")
             print("  hop=2")
             print(f"  target_entities={sorted(target_entities)}")
+            #用双倍的 top_k 去检索 chunk，给排序留出余量
             chunks = self._retrieve_chunks_by_entities(target_entities, top_k=top_k * 2)
             print(f"  chunks={len(chunks)}")
             expansion_hops = 2
-
+        # 按图路径相关性重新打分
         ranked_chunks = self._rank_by_path_relevance(chunks, [], target_entities)
         self._tag_graph_chunks(
             ranked_chunks,
@@ -238,6 +239,7 @@ class GraphRetrieval:
 
     def _expand_with_neighbors(self, entities: Set[str], k: int = 1) -> Set[str]:
         """Expand entity set with predecessors and successors up to k hops."""
+        #返回一级邻跳
         return self.kg.expand_entities(entities, k=k)
 
     def _retrieve_chunks_by_entities(
@@ -259,7 +261,8 @@ class GraphRetrieval:
         if not hasattr(self.vector_store, "get_chunks_by_ids"):
             print("Graph search failed: vector store cannot fetch chunks by id")
             return []
-
+        
+        #根据 chunk_id 从向量数据库中获取对应的 chunks，并附加图检索相关的元数据标签
         results = self.vector_store.get_chunks_by_ids(chunk_ids[:top_k])
 
         chunks = []

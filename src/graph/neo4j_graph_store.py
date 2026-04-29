@@ -10,6 +10,7 @@ from src.graph.entity_extractor import Entity
 from src.graph.relationship_extractor import Relationship
 
 
+# Neo4j 图谱的 CRUD
 class Neo4jGraphStore:
     """Store and query document knowledge graphs in Neo4j."""
 
@@ -169,11 +170,13 @@ class Neo4jGraphStore:
                 evidence_json=evidence_json,
             )
 
+    # 匹配输入实体中已存在于 Neo4j 的实体名称
     def match_entities(self, entities: List[str]) -> List[str]:
         """Return extracted entity names that exist in Neo4j, preserving input order."""
         if not entities:
             return []
         with self.driver.session() as session:
+             # 查询输入实体中实际存在于 Entity 节点中的名称
             rows = session.run(
                 """
                 UNWIND $entities AS candidate
@@ -184,7 +187,8 @@ class Neo4jGraphStore:
             )
             found = {row["name"] for row in rows}
         return [entity for entity in entities if entity in found]
-
+    
+    # 基于输入实体进行 k-hop 扩展（一级邻跳），返回扩展后的实体集合
     def expand_entities(self, entities: Set[str], k: int = 1) -> Set[str]:
         """Return seed entities plus neighbors up to k hops."""
         if not entities:
@@ -255,9 +259,10 @@ class Neo4jGraphStore:
         """Collect ordered chunk evidence, preferring path edge evidence."""
         if not entities:
             return []
-
         path_edges = self._path_edges(paths or [])
         with self.driver.session() as session:
+            # 给定一批实体名 entities，查这些实体节点，以及这些实体之间的关系边，
+            # 最后返回“节点chunk”和“边chunk”。
             rows = session.run(
                 """
                 MATCH (n:Entity)
@@ -279,22 +284,24 @@ class Neo4jGraphStore:
                 """,
                 entities=sorted(entities),
             )
-            row = rows.single()
+            row = rows.single()#游标转化为单行数据
 
         if not row:
             return []
 
-        ordered: List[str] = []
-        seen: Set[str] = set()
-
+        ordered: List[str] = []  # 保持去重后的有序 chunk 列表
+        seen: Set[str] = set()  # 用于去重
+        
         def add_many(values: Iterable[str]) -> None:
+            """将可迭代中的有效值按出现顺序加入结果列表。"""
             for value in values or []:
                 if value and value not in seen:
                     ordered.append(value)
                     seen.add(value)
-
-        edge_items = row["edge_items"] or []
+        
+        edge_items = row["edge_items"] or []  # 关联边的 chunk 信息
         if path_edges:
+            # 若提供路径边集合，仅优先收集路径上的边
             for item in edge_items:
                 if not item:
                     continue
@@ -302,13 +309,15 @@ class Neo4jGraphStore:
                 if edge in path_edges:
                     add_many(item.get("chunks"))
 
+        # 再补充所有边上的 chunk（避免遗漏）
         for item in edge_items:
             if item:
                 add_many(item.get("chunks"))
-        add_many(row["node_chunk_ids"])
+        add_many(row["node_chunk_ids"])  # 最后补充节点自身的 chunk
         return ordered
 
     def _path_edges(self, paths: List[Dict[str, Any]]) -> Set[tuple[str, str]]:
+        """从路径列表中提取所有相邻节点对作为边集合，用于构建子图。"""
         edges: Set[tuple[str, str]] = set()
         for path_dict in paths:
             path = path_dict.get("path", [])

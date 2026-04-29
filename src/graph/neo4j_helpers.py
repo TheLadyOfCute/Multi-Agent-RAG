@@ -2,12 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import os
-import subprocess
-import sys
-import tempfile
-from pathlib import Path
 from typing import Any
 
 from src.config import get_settings
@@ -138,60 +132,3 @@ def _query_neo4j_stats_direct() -> dict[str, Any]:
     finally:
         # 无论查询是否成功，都关闭驱动连接
         driver.close()
-
-
-# 通过子进程构建 Neo4j 图谱
-def build_neo4j_graph_subprocess(chunks: list[Any]) -> None:
-    # 将 chunk 对象转换为可序列化的 JSON 数据
-    payload = {
-        "chunks": [
-            {
-                "chunk_id": chunk.chunk_id,
-                "text": chunk.text,
-                "doc_id": chunk.doc_id,
-                "metadata": chunk.metadata,
-                "token_count": chunk.token_count,
-                "start_idx": chunk.start_idx,
-                "end_idx": chunk.end_idx,
-            }
-            for chunk in chunks
-        ]
-    }
-
-    # 初始化临时文件路径，便于 finally 中清理
-    temp_path = None
-
-    try:
-        # 创建临时 JSON 文件，用于向子进程传递 chunk 数据
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as file:
-            json.dump(payload, file, ensure_ascii=False)
-            temp_path = file.name
-
-        # 启动子进程执行 Neo4j 图谱构建脚本
-        result = subprocess.run(
-            [sys.executable, "-m", "src.graph.build_neo4j_graph", temp_path],
-            cwd=Path(__file__).resolve().parents[2],
-            text=True,
-            capture_output=True,
-            timeout=300,
-        )
-
-        # 输出子进程标准输出，便于排查构建过程
-        if result.stdout:
-            print(result.stdout.strip(), flush=True)
-
-        # 输出子进程错误输出，便于定位异常
-        if result.stderr:
-            print(result.stderr.strip(), flush=True)
-
-        # 子进程退出码非 0 时视为构建失败
-        if result.returncode != 0:
-            raise RuntimeError(f"Neo4j graph subprocess failed with exit code {result.returncode}")
-    finally:
-        # 清理临时文件
-        if temp_path:
-            try:
-                os.remove(temp_path)
-            except OSError:
-                # 临时文件删除失败时忽略，避免覆盖主异常
-                pass

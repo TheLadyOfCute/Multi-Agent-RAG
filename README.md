@@ -120,7 +120,6 @@ flowchart TD
 - [src/ingestion/flat_chunker.py](/D:/python/Agent/Multi-Agent-RAG/src/ingestion/flat_chunker.py)
 - [src/ingestion/embedder.py](/D:/python/Agent/Multi-Agent-RAG/src/ingestion/embedder.py)
 - [src/storage/chroma_store.py](/D:/python/Agent/Multi-Agent-RAG/src/storage/chroma_store.py)
-- [src/graph/build_neo4j_graph.py](/D:/python/Agent/Multi-Agent-RAG/src/graph/build_neo4j_graph.py)
 
 ## 查询问答流程
 
@@ -355,5 +354,4 @@ pytest tests -q
 python -c "import src.server.main as m; print(type(m.app).__name__)"
 python -c "from src.server.utils.dependencies import get_runtime_state; print(type(get_runtime_state()).__name__)"
 python -c "from src.workflows.factory import create_full_rag_workflow; print(create_full_rag_workflow.__name__)"
-python -m src.graph.build_neo4j_graph --help
 ```

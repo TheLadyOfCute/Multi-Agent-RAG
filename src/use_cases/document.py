@@ -10,7 +10,7 @@ from typing import Any, BinaryIO
 from src.server.utils.paths import BM25_INDEX_PATH, UPLOAD_DIR
 from src.server.utils.state import RuntimeState
 from src.cache.redis_cache import RedisCacheService
-from src.graph.neo4j_helpers import build_neo4j_graph_subprocess, get_neo4j_stats, refresh_neo4j_stats_best_effort
+from src.graph.neo4j_helpers import get_neo4j_stats, open_neo4j_store, refresh_neo4j_stats_best_effort
 from src.storage.factory import close_vector_store, open_vector_store
 from src.utils.logger import setup_logger
 from src.retrieval.bm25_index import BM25Index
@@ -272,7 +272,28 @@ class ProcessUploadedDocumentUseCase:
 
     def _build_graph_best_effort(self, chunks: list[Any]) -> bool:
         try:
-            build_neo4j_graph_subprocess(chunks)
+            from src.graph.entity_extractor import EntityExtractor
+            from src.graph.relationship_extractor import RelationshipExtractor
+
+            entity_extractor = EntityExtractor()
+            rel_extractor = RelationshipExtractor()
+
+            chunk_entities: dict[str, list] = {}
+            chunk_relationships: dict[str, list] = {}
+            for chunk in chunks:
+                entities = entity_extractor.extract(chunk.text)
+                chunk_entities[chunk.chunk_id] = entities
+                if len(entities) >= 2:
+                    chunk_relationships[chunk.chunk_id] = rel_extractor.extract_from_sentence(chunk.text, entities)
+                else:
+                    chunk_relationships[chunk.chunk_id] = []
+
+            graph_store = open_neo4j_store()
+            try:
+                graph_store.build_from_chunks(chunks, chunk_entities, chunk_relationships)
+            finally:
+                graph_store.close()
+
             try:
                 get_neo4j_stats(self.runtime_state)
             except Exception as exc:
