@@ -1,4 +1,12 @@
-from typing import Dict, Any, Literal, TypeAlias
+from typing import Dict, Any, Literal
+
+try:
+    from typing import TypeAlias
+except ImportError:
+    try:
+        from typing_extensions import TypeAlias
+    except ImportError:
+        TypeAlias = Any
 
 from langgraph.graph import StateGraph, END
 
@@ -452,10 +460,29 @@ class CompleteAgenticRAGWorkflow:
             name: existing_quotas.get(name, default_quota)
             for name in target_retrievers
         }
+
+        before_plans = []
+        for plan in state.sub_query_plans or []:
+            plan_quotas = dict(plan.get("quotas") or {})
+            before_plans.append(
+                {
+                    "query": plan.get("query", state.query),
+                    "retrievers": list(plan.get("retrievers") or []),
+                    "quotas": plan_quotas,
+                }
+            )
+            plan["retrievers"] = list(target_retrievers)
+            plan["quotas"] = {
+                name: plan_quotas.get(name, state.retriever_quotas[name])
+                for name in target_retrievers
+            }
+
         state.metadata["retry_retrieval_expansion"] = {
             "round": state.retrieval_round,
             "before_retrievers": before,
             "after_retrievers": target_retrievers,
+            "before_sub_query_plans": before_plans,
+            "after_sub_query_plans": state.sub_query_plans or [],
             "reason": "validator_retrieve_more",
         }
 

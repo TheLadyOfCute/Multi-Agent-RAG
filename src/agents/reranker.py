@@ -43,26 +43,6 @@ _FALLBACK_DEFAULT_WEIGHT = 0.50
 
 
 class RerankerAgent(BaseAgent):
-    """
-    Reranker Agent — Cohere Rerank with weighted-score fallback.
-
-    Parameters
-    ----------
-    top_k : int, optional
-        Number of chunks to retain after reranking.
-        Defaults to ``settings.retrieval_top_k``.
-    cohere_model : str, optional
-        Cohere reranking model name.
-        Defaults to ``"rerank-v4.0-pro"``.
-
-    Example
-    -------
-    >>> reranker = RerankerAgent(top_k=10)
-    >>> state    = AgentState(query="…", chunks=[…])
-    >>> result   = reranker.run(state)
-    >>> print(len(result.chunks))           # ≤ top_k
-    >>> print(result.metadata["reranker"])  # stats dict
-    """
 
     def __init__(
         self,
@@ -83,20 +63,7 @@ class RerankerAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     def execute(self, state: AgentState) -> AgentState:
-        """
-        Rerank candidate pool and apply top-k selection.
 
-        Parameters
-        ----------
-        state : AgentState
-            ``state.chunks`` should be the deduplicated candidate pool
-            from RetrievalCoordinator.
-
-        Returns
-        -------
-        AgentState
-            ``state.chunks`` replaced with the top-k reranked chunks.
-        """
         chunks = state.chunks
 
         if not chunks:
@@ -131,7 +98,7 @@ class RerankerAgent(BaseAgent):
         )
         for rank, chunk in enumerate(final, start=1):
             print(format_ranked_chunk_line(rank, chunk))
-
+        
         state.chunks = final
         state.metadata["reranker"] = {
             "input_count":  input_count,
@@ -150,16 +117,7 @@ class RerankerAgent(BaseAgent):
     def _rerank_with_cohere(
         self, query: str, chunks: List[Chunk]
     ) -> tuple[List[Chunk], bool]:
-        """
-        Call Cohere Rerank API to reorder the candidate pool.
-
-        Returns
-        -------
-        (reranked_chunks, success_flag)
-            If the API call succeeds, returns the reordered list and
-            ``True``.  On any failure returns the original list and
-            ``False`` so the caller can invoke the fallback.
-        """
+        
         try:
             import cohere  # noqa: PLC0415
         except ImportError:
@@ -175,7 +133,7 @@ class RerankerAgent(BaseAgent):
             return chunks, False
 
         try:
-            co        = cohere.Client(api_key=settings.cohere_api_key)
+            co=cohere.Client(api_key=settings.cohere_api_key)
             documents = [c.text for c in chunks]
 
             self.log(
@@ -196,9 +154,9 @@ class RerankerAgent(BaseAgent):
             reranked: List[Chunk] = []
             for result in response.results:
                 chunk = chunks[result.index]
-                chunk.metadata["rerank_score"]     = result.relevance_score
-                chunk.metadata["pre_rerank_score"]  = chunk.score
-                chunk.score                         = result.relevance_score
+                chunk.metadata["rerank_score"]= result.relevance_score
+                chunk.metadata["pre_rerank_score"]= chunk.score
+                chunk.score=result.relevance_score
                 reranked.append(chunk)
 
             return reranked, True
@@ -234,7 +192,14 @@ class RerankerAgent(BaseAgent):
                 or chunk.metadata.get("source")
                 or "unknown"
             )
-            w = _FALLBACK_WEIGHTS.get(source, _FALLBACK_DEFAULT_WEIGHT)
+            # 处理合并来源 "vector|keyword|graph"：取最大权重
+            if "|" in source:
+                w = max(
+                    _FALLBACK_WEIGHTS.get(s.strip(), _FALLBACK_DEFAULT_WEIGHT)
+                    for s in source.split("|")
+                )
+            else:
+                w = _FALLBACK_WEIGHTS.get(source, _FALLBACK_DEFAULT_WEIGHT)
             base_score = chunk.score or 0.0
             weighted   = base_score * w
 

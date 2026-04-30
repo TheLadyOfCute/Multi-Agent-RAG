@@ -75,9 +75,6 @@ class RetrievalCoordinator(BaseAgent):
                 level="info"
             )
 
-            # NOTE: We no longer apply top-k here.
-            # The full unique pool is passed to RerankerAgent
-            # which will apply top-k after Cohere reranking.
             state.chunks = unique_chunks
             state.retrieval_round = current_round + 1
 
@@ -216,38 +213,6 @@ class RetrievalCoordinator(BaseAgent):
         state.metadata["retriever_results"] = retriever_results
         return all_results
 
-        for name in state.selected_retrievers:
-            agent = agent_map.get(name)
-            quota = state.retriever_quotas.get(name, self.top_k)
-
-            if agent is None:
-                self.log(
-                    f"[PLANNER] Retriever '{name}' not available, skipping",
-                    level="warning"
-                )
-                continue
-
-            try:
-                chunks = agent.search_async(state.query, top_k=quota)
-                # Tag each chunk with the retriever that produced it
-                for c in chunks:
-                    c.metadata["retriever"] = name
-                    c.metadata.setdefault("source", name)
-                all_results.extend(chunks)
-                retriever_results[name] = len(chunks)
-                self.log(
-                    f"[PLANNER] {name.upper()} → {len(chunks)} chunks "
-                    f"(top_k={quota})",
-                    level="info"
-                )
-            except Exception as exc:
-                self.log(
-                    f"[PLANNER] Retriever '{name}' failed: {exc}",
-                    level="warning"
-                )
-
-        state.metadata["retriever_results"] = retriever_results
-        return all_results
 
     def _count_by_retriever(self, chunks: List[Chunk]) -> Dict[str, int]:
         counts: Dict[str, int] = defaultdict(int)
@@ -370,16 +335,37 @@ class RetrievalCoordinator(BaseAgent):
 
         if not chunks:
             return []
-        
-        # 按 chunk_id 去重，保留每个 id 中分数最高的 chunk
+
+        # 按 chunk_id 去重，保留每个 id 中分数最高的 chunk，
+        # 同时合并所有命中的检索来源（如 "vector|keyword"）
         seen: dict[str, Chunk] = {}
+        seen_sources: dict[str, set[str]] = {}
+
         for chunk in chunks:
             key = chunk_dedup_key(chunk)
-            if key not in seen or (chunk.score or 0.0) > (seen[key].score or 0.0):
+            source = (
+                chunk.metadata.get("retriever")
+                or chunk.metadata.get("source")
+                or "unknown"
+            )
+
+            if key not in seen:
                 seen[key] = chunk
-        unique_chunks = list(seen.values())
-        
-        return unique_chunks
+                seen_sources[key] = {source}
+            else:
+                seen_sources[key].add(source)
+                if (chunk.score or 0.0) > (seen[key].score or 0.0):
+                    seen[key] = chunk
+
+        # 将合并后的来源写入保留 chunk 的 metadata
+        for key, chunk in seen.items():
+            sources = sorted(seen_sources[key])
+            merged = "|".join(sources)
+            chunk.metadata["retriever"] = merged
+            chunk.metadata["source"] = merged
+            chunk.metadata["all_retrievers"] = sources
+
+        return list(seen.values())
     
     def _select_top_k(self, chunks: List[Chunk], k: int) -> List[Chunk]:
         

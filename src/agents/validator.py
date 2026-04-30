@@ -26,28 +26,6 @@ from src.utils.llm_content import message_content_to_text
 
 
 class ValidatorAgent(BaseAgent):
-    """
-    Validator Agent - Quality control for retrieved chunks.
-    
-    Checks if retrieved chunks are sufficient to answer the query.
-    Can trigger re-retrieval if quality threshold not met.
-    
-    Attributes:
-        llm: Language model for validation assessment
-        threshold: Minimum sufficiency score (0.0-1.0)
-        max_retries: Maximum retrieval retry attempts
-        
-    Example:
-        >>> from langchain_anthropic import ChatAnthropic
-        >>> llm = ChatAnthropic(model="claude-3-5-sonnet-20241022")
-        >>> validator = ValidatorAgent(llm=llm)
-        >>> 
-        >>> state = AgentState(query="What is Python?", chunks=[...])
-        >>> result = validator.run(state)
-        >>> 
-        >>> print(result.validation_status)  # "PROCEED" or "RETRIEVE_MORE"
-        >>> print(result.validation_score)   # 0.85
-    """
     
     def __init__(
         self,
@@ -55,18 +33,6 @@ class ValidatorAgent(BaseAgent):
         threshold: float = None,
         max_retries: int = None
     ):
-        """
-        Initialize Validator Agent.
-        
-        Args:
-            llm: ChatOpenAI instance for validation
-            threshold: Minimum sufficiency score (default: from config)
-            max_retries: Maximum retry attempts (default: from config)
-        
-        Example:
-            >>> llm = ChatOpenAI(model="qwen-plus")
-            >>> validator = ValidatorAgent(llm=llm, threshold=0.75)
-        """
         super().__init__(name="validator", version="1.0.0")
         
         self.llm = llm
@@ -83,7 +49,6 @@ class ValidatorAgent(BaseAgent):
             if max_retries is not None 
             else settings.validator_max_retries
         )
-        
         self.log(
             f"Initialized with threshold={self.threshold}, "
             f"max_retries={self.max_retries}",
@@ -91,26 +56,7 @@ class ValidatorAgent(BaseAgent):
         )
     
     def execute(self, state: AgentState) -> AgentState:
-        """
-        Execute validation logic: check chunk sufficiency.
         
-        Args:
-            state: Current agent state with query and chunks
-        
-        Returns:
-            Updated state with validation_status and validation_score
-        
-        Raises:
-            ValidationError: If validation process fails
-        
-        Example:
-            >>> state = AgentState(query="What is X?", chunks=[...])
-            >>> result = validator.execute(state)
-            >>> if result.validation_status == "PROCEED":
-            ...     # Continue to answer generation
-            >>> else:
-            ...     # Retrieve more chunks
-        """
         try:
             query = state.query
             chunks = state.chunks
@@ -160,25 +106,7 @@ class ValidatorAgent(BaseAgent):
             ) from e
     
     def _calculate_sufficiency(self, query: str, chunks: List[Chunk]) -> float:
-        """
-        Calculate if chunks are sufficient to answer query.
         
-        Combines three factors:
-        - Relevance: 50% weight
-        - Coverage: 30% weight
-        - Confidence: 20% weight
-        
-        Args:
-            query: User query string
-            chunks: List of retrieved chunks
-        
-        Returns:
-            Sufficiency score (0.0-1.0)
-        
-        Example:
-            >>> score = validator._calculate_sufficiency("What is X?", chunks)
-            >>> print(score)  # 0.82
-        """
         if not chunks:
             self.log("No chunks to validate", level="warning")
             return 0.0
