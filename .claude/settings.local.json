@@ -1,14 +1,7 @@
 {
   "permissions": {
-    "defaultMode": "bypassPermissions",
-    "allow": [
-      "Bash(python -m pytest tests/test_graph_retrieval.py -v)",
-      "Bash(python -c \"import pytest; pytest.main\\(['-v', 'tests/test_graph_retrieval.py']\\)\")",
-      "Bash(where python *)",
-      "Bash(ls .venv/Scripts/python.exe)",
-      "Bash(ls venv/Scripts/python.exe)",
-      "Bash(E:/anaconda3/python.exe -m pytest tests/test_graph_retrieval.py -v)",
-      "Bash(E:/anaconda3/python.exe -m pytest tests/test_redis_cache.py -v)"
-    ]
+    "allow": ["*"],
+    "ask": [],
+    "deny": []
   }
 }

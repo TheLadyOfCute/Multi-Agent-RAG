@@ -1,14 +1,14 @@
 """
 Reranker Agent - Standalone reranking node in the LangGraph workflow.
 
-Sits between SynthesisAgent and ValidatorAgent:
+Sits between RetrievalCoordinator and ValidatorAgent:
 
-    Synthesis → Reranker → Validator
+    Retrieval -> Reranker -> Validator
 
 Responsibilities
 ----------------
 1. Call Cohere ``rerank-english-v3.0`` on the full candidate pool
-   produced by SynthesisAgent.
+   produced by RetrievalCoordinator.
 2. Apply top-k truncation after reranking.
 3. Fall back to a source-weighted scoring strategy when the Cohere
    API is unavailable or raises an error — preserving a deterministic,
@@ -16,8 +16,6 @@ Responsibilities
 
 Fallback weight scheme
 ----------------------
-The fallback mirrors the relevance intuition of the old hybrid-rank
-step in SynthesisAgent:
 
     source     weight
     ------     ------
@@ -92,7 +90,7 @@ class RerankerAgent(BaseAgent):
         ----------
         state : AgentState
             ``state.chunks`` should be the deduplicated candidate pool
-            from SynthesisAgent.
+            from RetrievalCoordinator.
 
         Returns
         -------

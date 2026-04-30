@@ -18,7 +18,6 @@ def create_full_rag_workflow(
     from src.agents.query_decomposer import QueryDecomposer
     from src.agents.reranker import RerankerAgent
     from src.agents.retrieval_coordinator import RetrievalCoordinator
-    from src.agents.synthesis import SynthesisAgent
     from src.agents.validator import ValidatorAgent
     from src.agents.writer import WriterAgent
     from src.config import get_settings
@@ -47,7 +46,6 @@ def create_full_rag_workflow(
             graph_agent=graph_agent,
         ),
         validator=ValidatorAgent(llm=llm),
-        synthesis=SynthesisAgent(),
         reranker=RerankerAgent(top_k=settings.retrieval_top_k),
         writer=WriterAgent(llm=llm),
         critic=CriticAgent(llm=llm, quality_threshold=0.7),

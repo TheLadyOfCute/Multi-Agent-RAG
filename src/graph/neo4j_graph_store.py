@@ -170,6 +170,7 @@ class Neo4jGraphStore:
                 evidence_json=evidence_json,
             )
 
+
     # 匹配输入实体中已存在于 Neo4j 的实体名称
     def match_entities(self, entities: List[str]) -> List[str]:
         """Return extracted entity names that exist in Neo4j, preserving input order."""
@@ -213,24 +214,26 @@ class Neo4jGraphStore:
         self,
         source: str,
         target: str,
-        max_length: int = 3,
+        max_length: int = 3,  # 3跳以内的路径，避免过深遍历导致性能问题
     ) -> List[Dict[str, Any]]:
         """Find directed paths between two entities."""
         with self.driver.session() as session:
+            # Cypher 查询：从 source 出发，沿 RELATED_TO 无向边找到 target
+            # 使用 *1..max_length 限制路径跳数，避免过深遍历
+            max_hops = int(max_length)
             rows = session.run(
-                """
-                MATCH path = (source:Entity {name: $source})-[:RELATED_TO*1..%d]->(target:Entity {name: $target})
+                f"""
+                MATCH path = (source:Entity {{name: $source}})-[:RELATED_TO*1..{max_hops}]-(target:Entity {{name: $target}})
                 RETURN [node IN nodes(path) | node.name] AS path,
                        [rel IN relationships(path) |
-                        {
+                        {{
                           source: startNode(rel).name,
                           target: endNode(rel).name,
                           relation: rel.relation,
                           confidence: coalesce(rel.confidence, 0.0)
-                        }] AS relations
+                        }}] AS relations
                 LIMIT 20
-                """
-                % int(max_length),
+                """,
                 source=source,
                 target=target,
             )
@@ -238,6 +241,7 @@ class Neo4jGraphStore:
             for row in rows:
                 path = row["path"]
                 relations = row["relations"]
+                # 路径分数 = 所有关系置信度的平均值
                 score = sum(float(rel.get("confidence") or 0.0) for rel in relations)
                 if relations:
                     score = score / len(relations)
@@ -245,7 +249,7 @@ class Neo4jGraphStore:
                     {
                         "path": path,
                         "relations": relations,
-                        "length": max(len(path) - 1, 0),
+                        "length": max(len(path) - 1, 0),  # 边数 = 节点数 - 1
                         "score": score,
                     }
                 )
@@ -255,65 +259,64 @@ class Neo4jGraphStore:
         self,
         entities: Set[str],
         paths: Optional[List[Dict[str, Any]]] = None,
+        expanded: bool = False,
     ) -> List[str]:
-        """Collect ordered chunk evidence, preferring path edge evidence."""
+        # Collect ordered chunk evidence.
+        # When expanded=False and paths exist, only path-specific edges are
+        # queried. When expanded=True, all edges between entities are queried.
         if not entities:
             return []
-        path_edges = self._path_edges(paths or [])
-        with self.driver.session() as session:
-            # 给定一批实体名 entities，查这些实体节点，以及这些实体之间的关系边，
-            # 最后返回“节点chunk”和“边chunk”。
-            rows = session.run(
-                """
-                MATCH (n:Entity)
-                WHERE n.name IN $entities
-                OPTIONAL MATCH (n)-[r:RELATED_TO]-(m:Entity)
-                WHERE m.name IN $entities
-                WITH collect(DISTINCT n.chunk_ids) AS node_lists,
-                     collect(DISTINCT CASE
-                        WHEN r IS NULL THEN null
-                        ELSE {
-                            source: startNode(r).name,
-                            target: endNode(r).name,
-                            chunks: r.chunk_ids
-                        }
-                     END) AS edge_items
-                RETURN
-                    reduce(node_chunks = [], item IN node_lists | node_chunks + coalesce(item, [])) AS node_chunk_ids,
-                    edge_items AS edge_items
-                """,
-                entities=sorted(entities),
-            )
-            row = rows.single()#游标转化为单行数据
 
-        if not row:
-            return []
+        ordered: List[str] = []
+        seen: Set[str] = set()
 
-        ordered: List[str] = []  # 保持去重后的有序 chunk 列表
-        seen: Set[str] = set()  # 用于去重
-        
         def add_many(values: Iterable[str]) -> None:
-            """将可迭代中的有效值按出现顺序加入结果列表。"""
             for value in values or []:
                 if value and value not in seen:
                     ordered.append(value)
                     seen.add(value)
-        
-        edge_items = row["edge_items"] or []  # 关联边的 chunk 信息
-        if path_edges:
-            # 若提供路径边集合，仅优先收集路径上的边
-            for item in edge_items:
-                if not item:
-                    continue
-                edge = (item.get("source"), item.get("target"))
-                if edge in path_edges:
-                    add_many(item.get("chunks"))
 
-        # 再补充所有边上的 chunk（避免遗漏）
-        for item in edge_items:
-            if item:
-                add_many(item.get("chunks"))
-        add_many(row["node_chunk_ids"])  # 最后补充节点自身的 chunk
+        path_edge_pairs = self._path_edges(paths or [])
+
+        with self.driver.session() as session:
+            # 1. 查询节点的 chunk_ids (始终需要)
+            node_rows = session.run(
+                """
+                MATCH (n:Entity)
+                WHERE n.name IN $entities
+                RETURN n.name AS name, n.chunk_ids AS chunk_ids
+                """,
+                entities=sorted(entities),
+            )
+            for row in node_rows:
+                add_many(row["chunk_ids"])
+
+            # 2. 查询边的 chunk_ids
+            if not expanded and path_edge_pairs:
+                # 实体直接来自路径；仅查询路径中存在的边
+                edge_rows = session.run(
+                    """
+                    UNWIND $edges AS edge
+                    MATCH (a:Entity {name: edge[0]})-[r:RELATED_TO]-(b:Entity {name: edge[1]})
+                    RETURN DISTINCT r.chunk_ids AS chunks
+                    """,
+                    edges=[list(e) for e in sorted(path_edge_pairs)],
+                )
+                for row in edge_rows:
+                    add_many(row["chunks"])
+            else:
+                # 图较稀疏（邻居已扩展）；查询这些实体之间的所有边
+                edge_rows = session.run(
+                    """
+                    MATCH (n:Entity)-[r:RELATED_TO]-(m:Entity)
+                    WHERE n.name IN $entities AND m.name IN $entities
+                    RETURN DISTINCT r.chunk_ids AS chunks
+                    """,
+                    entities=sorted(entities),
+                )
+                for row in edge_rows:
+                    add_many(row["chunks"])
+
         return ordered
 
     def _path_edges(self, paths: List[Dict[str, Any]]) -> Set[tuple[str, str]]:

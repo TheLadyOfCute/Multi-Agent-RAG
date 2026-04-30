@@ -7,7 +7,6 @@ from src.agents.planner import PlannerAgent
 from src.agents.query_decomposer import QueryDecomposer
 from src.agents.retrieval_coordinator import RetrievalCoordinator
 from src.agents.validator import ValidatorAgent
-from src.agents.synthesis import SynthesisAgent
 from src.agents.reranker import RerankerAgent
 from src.agents.writer import WriterAgent
 from src.agents.critic import CriticAgent, CriticDecision
@@ -27,14 +26,14 @@ class CompleteAgenticRAGWorkflow:
     Orchestrates all agents in a multi-stage pipeline:
 
     Stage 1 Decomposition + Planning
-        Decomposer  Planner
+        Decomposer -> Planner
 
     Stage 2 Retrieval + Candidate pool (with validator retry loop)
-        Retrieval CoordinatorSynthesisRerankerValidator
+        Retrieval Coordinator -> Reranker -> Validator
         (Validator loops back to Retrieval Coordinator if quality gate fails)
 
-    Stage 3Generation (writer self-reflection loop)
-        WriterCritic
+    Stage 3 Generation (writer self-reflection loop)
+        Writer -> Critic
 
     Parameters
     ----------
@@ -42,7 +41,6 @@ class CompleteAgenticRAGWorkflow:
     decomposer : QueryDecomposer
     coordinator : RetrievalCoordinator
     validator : ValidatorAgent
-    synthesis : SynthesisAgent
     reranker : RerankerAgent
     writer : WriterAgent
     critic : CriticAgent
@@ -54,7 +52,6 @@ class CompleteAgenticRAGWorkflow:
         decomposer:  QueryDecomposer,
         coordinator: RetrievalCoordinator,
         validator:   ValidatorAgent,
-        synthesis:   SynthesisAgent,
         reranker:    RerankerAgent,
         writer:      WriterAgent,
         critic:      CriticAgent,
@@ -63,7 +60,6 @@ class CompleteAgenticRAGWorkflow:
         self.decomposer  = decomposer
         self.coordinator = coordinator
         self.validator   = validator
-        self.synthesis   = synthesis
         self.reranker    = reranker
         self.writer      = writer
         self.critic      = critic
@@ -71,7 +67,7 @@ class CompleteAgenticRAGWorkflow:
         self.logger = setup_logger("complete_workflow", level="INFO")
         self.workflow = self._build_workflow()
         self.logger.info(
-            "Complete AgenticRAG workflow v3 initialized (8 nodes)"
+            "Complete AgenticRAG workflow v3 initialized (7 nodes)"
         )
 
     # ------------------------------------------------------------------
@@ -82,21 +78,19 @@ class CompleteAgenticRAGWorkflow:
         """
         Build the LangGraph StateGraph (v3).
 
-        Nodes (8):  decomposer, planner, retrieval, synthesis,
+        Nodes (7):  decomposer, planner, retrieval,
                     reranker, validator, writer, critic
 
-        Fixed edges (7):
-            decomposerplanner
-            planner   retrieval
-            retrieval synthesis
-            synthesis reranker
-            reranker  validator
-            writer    critic
-            (validatorwriter via conditional PROCEED)
+        Fixed edges (5):
+            decomposer -> planner
+            planner    -> retrieval
+            retrieval  -> reranker
+            reranker   -> validator
+            writer     -> critic
 
         Conditional edges (2):
-            validator retrieval (retry) | writer (proceed)
-            critic    writer (regenerate) | END (finish)
+            validator -> retrieval (retry) | writer (proceed)
+            critic    -> writer (regenerate) | END (finish)
         """
         self.logger.info("Building LangGraph workflow (v3)")
 
@@ -106,24 +100,21 @@ class CompleteAgenticRAGWorkflow:
         graph.add_node("decomposer", self._decomposer_node)
         graph.add_node("planner",    self._planner_node)
         graph.add_node("retrieval",  self._retrieval_node)
-        graph.add_node("synthesis",  self._synthesis_node)
         graph.add_node("reranker",   self._reranker_node)
         graph.add_node("validator",  self._validator_node)
         graph.add_node("writer",     self._writer_node)
         graph.add_node("critic",     self._critic_node)
 
-        # ── Stage 1: DecompositionPlanning ─────────────────────────
+        # ── Stage 1: Decomposition + Planning ──────────────────────────
         graph.set_entry_point("decomposer")
         graph.add_edge("decomposer", "planner")
         graph.add_edge("planner",    "retrieval")
 
-        # ── Stage 2: RetrievalSynthesisRerankerValidator ─────
-        graph.add_edge("retrieval", "synthesis")
-        graph.add_edge("synthesis", "reranker")
+        # ── Stage 2: Retrieval -> Reranker -> Validator ────────────────
+        graph.add_edge("retrieval", "reranker")
         graph.add_edge("reranker",  "validator")
 
-        # Validator: retry goes back to retrieval ("synthesisreranker
-        #validator again via fixed edgesno extra wiring needed).
+        # Validator: retry goes back to retrieval
         graph.add_conditional_edges(
             "validator",
             self._should_retry_retrieval,
@@ -146,7 +137,7 @@ class CompleteAgenticRAGWorkflow:
 
         compiled = graph.compile()
         self.logger.info(
-            "Workflow built: 8 nodes, 6 fixed edges, 2 conditional edges"
+            "Workflow built: 7 nodes, 5 fixed edges, 2 conditional edges"
         )
         return compiled
 
@@ -265,36 +256,6 @@ class CompleteAgenticRAGWorkflow:
                 node_name="retrieval",
                 message=f"Retrieval failed: {exc}",
                 details={"query": state.query, "round": state.retrieval_round},
-            ) from exc
-
-    def _synthesis_node(self, state: AgentState) -> AgentState:
-        self.logger.info("SYNTHESIS nodededup + candidate pool")
-        try:
-            result = self.synthesis.run(state)
-            meta   = result.metadata.get("synthesis", {})
-            self.logger.info(
-                format_stage_trace(
-                    "synthesis",
-                    inputs={"raw_chunks": meta.get("input_count", 0)},
-                    outputs={"candidate_chunks": meta.get("unique_count", 0)},
-                    metrics={
-                        "dedup_rate": meta.get("deduplication_rate", 0),
-                        "sources": meta.get("source_breakdown", {}),
-                    },
-                )
-            )
-            self.logger.info(
-                f"Synthesis: {meta.get('input_count', 0)}"
-                f"{meta.get('unique_count', 0)} unique chunks "
-                f"(sources: {meta.get('source_breakdown', {})})"
-            )
-            return result
-        except Exception as exc:
-            self.logger.error(f"Synthesis node failed: {exc}")
-            raise OrchestrationError(
-                node_name="synthesis",
-                message=f"Synthesis failed: {exc}",
-                details={"query": state.query},
             ) from exc
 
     def _reranker_node(self, state: AgentState) -> AgentState:

@@ -19,7 +19,7 @@ from src.agents.base_agent import BaseAgent
 from src.models.agent_state import AgentState, Chunk, Strategy
 from src.utils.exceptions import RetrievalError
 from src.config import get_settings
-from src.utils.retrieval_debug import chunk_dedup_key, merge_retriever_sources
+from src.utils.retrieval_debug import chunk_dedup_key
 
 
 class RetrievalCoordinator(BaseAgent):
@@ -58,38 +58,10 @@ class RetrievalCoordinator(BaseAgent):
                 level="info"
             )
 
-            # ── Path 1: Per-sub-query plans ─────────────
-            if state.sub_query_plans:
-                all_results = self._retrieve_by_sub_query_plans(state)
-                path_used   = "sub-query-plans"
-                retriever_results = dict(
-                    state.metadata.get("retriever_results", {})
-                )
 
-            # ── Path 2: Planner-selected retrievers  ───────
-            elif state.selected_retrievers:
-                all_results = self._retrieve_by_planner_selection(state)
-                path_used   = "planner-selection"
-                retriever_results = dict(
-                    state.metadata.get("retriever_results", {})
-                )
-
-            # ── Path 3: Legacy strategy-based routing (fallback) ──────
-            else:
-                strategy = state.strategy
-                self.log(
-                    f"No retriever selection from planner, "
-                    f"falling back to strategy={strategy}",
-                    level="warning"
-                )
-                if strategy == Strategy.SIMPLE or strategy == "simple":
-                    all_results = self._retrieve_simple(state.query)
-                else:
-                    queries = state.sub_queries or [state.query]
-                    all_results = self._retrieve_multihop(state.query, queries)
-                path_used = f"strategy-{strategy}"
-                retriever_results = self._count_by_retriever(all_results)
-            # ──────────────────────────────────────────────────────────
+            all_results = self._retrieve_by_sub_query_plans(state)
+            path_used   = "sub-query-plans"
+            retriever_results = dict(state.metadata.get("retriever_results", {}))
 
             self.log(
                 f"Retrieved {len(all_results)} total chunks (path={path_used})",
@@ -104,9 +76,9 @@ class RetrievalCoordinator(BaseAgent):
             )
 
             # NOTE: We no longer apply top-k here.
-            # The full unique pool is passed to SynthesisAgent → RerankerAgent
+            # The full unique pool is passed to RerankerAgent
             # which will apply top-k after Cohere reranking.
-            state.chunks          = unique_chunks
+            state.chunks = unique_chunks
             state.retrieval_round = current_round + 1
 
             state.metadata["retrieval_coordinator"] = {
@@ -196,26 +168,7 @@ class RetrievalCoordinator(BaseAgent):
     # ── Planner-driven retrieval (v2 compat path) ─────────────────────
 
     def _retrieve_by_planner_selection(self, state: AgentState) -> List[Chunk]:
-        """
-        Execute only the retrievers chosen by PlannerAgent, each with
-        its own quota.
 
-        For every name in ``state.selected_retrievers`` the
-        corresponding agent is called with ``top_k = retriever_quotas[name]``.
-        Results are tagged with ``metadata["retriever"]`` for
-        traceability and merged into a single flat list.
-
-        If a retriever agent is not available (e.g. graph agent not
-        initialised because no KG was built) the entry is skipped with
-        a warning so the remaining retrievers can still contribute.
-
-        Args:
-            state: AgentState carrying selected_retrievers and
-                   retriever_quotas populated by PlannerAgent.
-
-        Returns:
-            Flat list of Chunk objects from all executed retrievers.
-        """
         agent_map: Dict[str, Any] = {
             "vector":  self.vector_agent,
             "keyword": self.keyword_agent,
@@ -414,65 +367,22 @@ class RetrievalCoordinator(BaseAgent):
         return all_results
     
     def _deduplicate(self, chunks: List[Chunk]) -> List[Chunk]:
-        """
-        Remove duplicate chunks based on content similarity.
-        
-        Uses text hashing to identify duplicates. Keeps chunk with
-        highest score when duplicates found.
-        
-        Args:
-            chunks: List of chunks (may contain duplicates)
-        
-        Returns:
-            List of unique chunks
-        
-        Example:
-            >>> duplicates = [chunk1, chunk1_copy, chunk2]
-            >>> unique = coordinator._deduplicate(duplicates)
-            >>> print(len(unique))  # 2
-        """
+
         if not chunks:
             return []
         
-        # Group by stable chunk identity first.
-        hash_groups = defaultdict(list)
-        
+        # 按 chunk_id 去重，保留每个 id 中分数最高的 chunk
+        seen: dict[str, Chunk] = {}
         for chunk in chunks:
-            content_hash = chunk_dedup_key(chunk)
-            hash_groups[content_hash].append(chunk)
-        
-        # Keep best chunk from each group
-        unique_chunks = []
-        for group in hash_groups.values():
-            # Sort by score (descending)
-            sorted_group = sorted(
-                group,
-                key=lambda c: c.score if c.score is not None else 0.0,
-                reverse=True
-            )
-            # Keep highest scored
-            best = sorted_group[0]
-            merge_retriever_sources(best, sorted_group[1:])
-            unique_chunks.append(best)
+            key = chunk_dedup_key(chunk)
+            if key not in seen or (chunk.score or 0.0) > (seen[key].score or 0.0):
+                seen[key] = chunk
+        unique_chunks = list(seen.values())
         
         return unique_chunks
     
     def _select_top_k(self, chunks: List[Chunk], k: int) -> List[Chunk]:
-        """
-        Select top-k chunks by score.
         
-        Args:
-            chunks: List of chunks
-            k: Number to select
-        
-        Returns:
-            Top-k chunks sorted by score (descending)
-        
-        Example:
-            >>> top_10 = coordinator._select_top_k(chunks, 10)
-            >>> print(len(top_10))  # 10
-            >>> print(top_10[0].score >= top_10[-1].score)  # True
-        """
         if not chunks:
             return []
         

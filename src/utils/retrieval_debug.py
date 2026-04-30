@@ -4,6 +4,7 @@ from typing import Any, Mapping, Optional
 
 
 def _get_attr_or_key(value: Any, name: str, default: Any = None) -> Any:
+    #dict、defaultdict、OrderedDict 都属于 Mapping（映射类型）
     if isinstance(value, Mapping):
         return value.get(name, default)
     return getattr(value, name, default)
@@ -20,37 +21,8 @@ def _short(value: Any, max_len: int = 40) -> str:
 
 
 def chunk_dedup_key(value: Any) -> str:
-    """Return the preferred duplicate key for retrieval results."""
-    chunk_id = _get_attr_or_key(value, "chunk_id", "")
-    if chunk_id:
-        return f"chunk:{chunk_id}"
-
-    text = _get_attr_or_key(value, "text", "") or ""
-    return "text:" + " ".join(str(text).lower().split())
-
-
-def merge_retriever_sources(kept: Any, duplicates: list[Any]) -> None:
-    """Merge retriever/source labels from duplicate chunks into kept metadata."""
-    kept_meta = _metadata(kept)
-    sources = set()
-
-    for value in [kept, *duplicates]:
-        meta = _metadata(value)
-        for field in ("retriever", "source"):
-            raw = meta.get(field)
-            if not raw:
-                continue
-            for item in str(raw).split("|"):
-                item = item.strip()
-                if item:
-                    sources.add(item)
-
-    if not sources or not isinstance(kept_meta, dict):
-        return
-
-    merged = "|".join(sorted(sources))
-    kept_meta["retriever"] = merged
-    kept_meta["source"] = merged
+    """返回 chunk 的去重标识，所有入口均保证 chunk_id 存在。"""
+    return _get_attr_or_key(value, "chunk_id", "")
 
 
 def format_ranked_chunk_line(
