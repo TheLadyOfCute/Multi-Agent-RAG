@@ -41,7 +41,7 @@
 |   +-- agents/        多 Agent 角色实现
 |   +-- workflows/     LangGraph 工作流与工厂
 |   +-- retrieval/     向量检索、BM25、图谱检索、调试工具
-|   +-- ingestion/     文档加载、切块、embedding
+|   +-- ingestion/     文档加载、切块、embedding（入库前处理层）
 |   +-- graph/         Neo4j 图谱存储、实体抽取、关系抽取
 |   +-- storage/       Chroma 存储与工厂
 |   +-- cache/         Redis 缓存服务
