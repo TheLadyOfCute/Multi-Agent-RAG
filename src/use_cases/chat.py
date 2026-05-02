@@ -214,11 +214,17 @@ class RunChatQueryUseCase:
         strategy = RunChatQueryUseCase._enum_value(result.get("strategy"))
         decision = RunChatQueryUseCase._enum_value(result.get("critic_decision"))
         metadata = result.get("metadata", {}) or {}
+        plans = result.get("sub_query_plans") or []
+        all_retrievers = list({r for p in plans for r in p.get("retrievers", [])})
+        max_quotas: dict[str, int] = {}
+        for p in plans:
+            for name, q in (p.get("quotas") or {}).items():
+                max_quotas[name] = max(max_quotas.get(name, 0), q)
         return {
             "complexity": result.get("complexity"),
             "strategy": strategy,
-            "selected_retrievers": result.get("selected_retrievers", []),
-            "retriever_quotas": result.get("retriever_quotas", {}),
+            "selected_retrievers": all_retrievers,
+            "retriever_quotas": max_quotas,
             "retrieval_rounds": result.get("retrieval_round"),
             "validation_score": result.get("validation_score"),
             "critic_score": result.get("critic_score"),

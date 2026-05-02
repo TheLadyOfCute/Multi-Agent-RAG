@@ -63,6 +63,7 @@ class CompleteAgenticRAGWorkflow:
         reranker:    RerankerAgent,
         writer:      WriterAgent,
         critic:      CriticAgent,
+        vector_store=None,
     ):
         self.planner     = planner
         self.decomposer  = decomposer
@@ -71,6 +72,7 @@ class CompleteAgenticRAGWorkflow:
         self.reranker    = reranker
         self.writer      = writer
         self.critic      = critic
+        self.vector_store = vector_store
 
         self.logger = setup_logger("complete_workflow", level="INFO")
         self.workflow = self._build_workflow()
@@ -229,7 +231,6 @@ class CompleteAgenticRAGWorkflow:
         else:
             self.logger.info(
                 f"RETRIEVAL node (round {state.retrieval_round})"
-                f"retrievers={state.selected_retrievers}"
             )
         try:
             result = self.coordinator.run(state)
@@ -238,8 +239,7 @@ class CompleteAgenticRAGWorkflow:
                 format_stage_trace(
                     "retrieval",
                     inputs={
-                        "retrievers": meta.get("selected_retrievers", []),
-                        "requested": meta.get("retriever_quotas", {}),
+                        "plans": meta.get("sub_query_plans", 0),
                     },
                     outputs={
                         "raw_chunks": meta.get("total_retrieved", 0),
@@ -438,8 +438,7 @@ class CompleteAgenticRAGWorkflow:
             self._expand_retrievers_for_retry(state)
             self.logger.info(
                 f"Validator FAILEDretry retrieval "
-                f"(round {state.retrieval_round}, "
-                f"retrievers={state.selected_retrievers})"
+                f"(round {state.retrieval_round})"
             )
             return "retry"
         # Unknown statusdefault to proceed
@@ -451,15 +450,7 @@ class CompleteAgenticRAGWorkflow:
     def _expand_retrievers_for_retry(self, state: AgentState) -> None:
         """On validator retry, force the next retrieval round to use all paths."""
         target_retrievers = ["vector", "keyword", "graph"]
-        before = list(state.selected_retrievers or [])
-        existing_quotas = dict(state.retriever_quotas or {})
         default_quota = 10
-
-        state.selected_retrievers = target_retrievers
-        state.retriever_quotas = {
-            name: existing_quotas.get(name, default_quota)
-            for name in target_retrievers
-        }
 
         before_plans = []
         for plan in state.sub_query_plans or []:
@@ -473,22 +464,20 @@ class CompleteAgenticRAGWorkflow:
             )
             plan["retrievers"] = list(target_retrievers)
             plan["quotas"] = {
-                name: plan_quotas.get(name, state.retriever_quotas[name])
+                name: plan_quotas.get(name, default_quota)
                 for name in target_retrievers
             }
 
         state.metadata["retry_retrieval_expansion"] = {
             "round": state.retrieval_round,
-            "before_retrievers": before,
-            "after_retrievers": target_retrievers,
             "before_sub_query_plans": before_plans,
             "after_sub_query_plans": state.sub_query_plans or [],
             "reason": "validator_retrieve_more",
         }
 
         self.logger.info(
-            f"Retry retrieval expansion: {before}{target_retrievers}, "
-            f"quotas={state.retriever_quotas}"
+            f"Retry retrieval expansion: all retrievers forced, "
+            f"plans={len(state.sub_query_plans or [])}"
         )
 
     def _should_regenerate(
@@ -537,12 +526,16 @@ class CompleteAgenticRAGWorkflow:
         self.logger.info(f"Starting workflow for: {query[:80]}")
         try:
             initial_state = AgentState(query=query)
+
+            # 设置知识库总文档数，供 validator 评估多样性
+            if self.vector_store and hasattr(self.vector_store, "count_documents"):
+                initial_state.total_docs = self.vector_store.count_documents()
+
             raw_result = self.workflow.invoke(initial_state)
             result = self._normalize_workflow_result(raw_result)
 
             self.logger.info(
                 f"Workflow complete"
-                f"retrievers={result.get('selected_retrievers')}, "
                 f"chunks={len(result.get('chunks') or [])}, "
                 f"rounds={result.get('retrieval_round')}, "
                 f"critic_score={self._format_optional_score(result.get('critic_score'))}, "
@@ -570,8 +563,6 @@ class CompleteAgenticRAGWorkflow:
                 "query": result.query,
                 "complexity": result.complexity,
                 "strategy": result.strategy,
-                "selected_retrievers": result.selected_retrievers,
-                "retriever_quotas": result.retriever_quotas,
                 "sub_queries": result.sub_queries,
                 "sub_query_plans": result.sub_query_plans,
                 "chunks": result.chunks,

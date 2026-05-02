@@ -22,7 +22,6 @@ def test_run_returns_dict_when_langgraph_returns_dict() -> None:
     raw_result = {
         "answer": "ok",
         "chunks": [],
-        "selected_retrievers": ["vector"],
         "retrieval_round": 1,
         "critic_score": 0.9,
         "metadata": {"regeneration_count": 0},
@@ -33,14 +32,12 @@ def test_run_returns_dict_when_langgraph_returns_dict() -> None:
 
     assert isinstance(result, dict)
     assert result["answer"] == "ok"
-    assert result["selected_retrievers"] == ["vector"]
 
 
 def test_run_normalizes_agent_state_to_dict() -> None:
     raw_result = AgentState(
         query="hello",
         answer="ok",
-        selected_retrievers=["keyword"],
         retrieval_round=2,
         metadata={"regeneration_count": 1},
     )
@@ -51,7 +48,6 @@ def test_run_normalizes_agent_state_to_dict() -> None:
     assert isinstance(result, dict)
     assert result["query"] == "hello"
     assert result["answer"] == "ok"
-    assert result["selected_retrievers"] == ["keyword"]
     assert result["metadata"]["regeneration_count"] == 1
 
 
@@ -60,8 +56,6 @@ def test_retry_expansion_updates_sub_query_plans() -> None:
     workflow.logger = SimpleNamespace(info=lambda *args, **kwargs: None)
     state = AgentState(
         query="hello",
-        selected_retrievers=["vector"],
-        retriever_quotas={"vector": 4},
         sub_query_plans=[
             {"query": "hello", "retrievers": ["vector"], "quotas": {"vector": 4}},
             {"query": "world", "retrievers": ["keyword"], "quotas": {"keyword": 6}},
@@ -70,8 +64,6 @@ def test_retry_expansion_updates_sub_query_plans() -> None:
 
     workflow._expand_retrievers_for_retry(state)
 
-    assert state.selected_retrievers == ["vector", "keyword", "graph"]
-    assert state.retriever_quotas == {"vector": 4, "keyword": 10, "graph": 10}
     assert [p["retrievers"] for p in state.sub_query_plans] == [
         ["vector", "keyword", "graph"],
         ["vector", "keyword", "graph"],
@@ -82,7 +74,7 @@ def test_retry_expansion_updates_sub_query_plans() -> None:
         "graph": 10,
     }
     assert state.sub_query_plans[1]["quotas"] == {
-        "vector": 4,
+        "vector": 10,
         "keyword": 6,
         "graph": 10,
     }

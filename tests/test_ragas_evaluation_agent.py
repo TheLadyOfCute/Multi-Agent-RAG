@@ -72,8 +72,9 @@ class FakeWorkflow:
         return {
             "answer": f"answer for {question}",
             "chunks": [chunk],
-            "selected_retrievers": ["hybrid"],
-            "retriever_quotas": {"dense": 4},
+            "sub_query_plans": [
+                {"query": question, "retrievers": ["vector"], "quotas": {"vector": 10}},
+            ],
             "retrieval_round": 1,
             "validation_score": 0.8,
             "critic_score": 0.9,

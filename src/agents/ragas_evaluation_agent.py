@@ -149,14 +149,20 @@ class RagasEvaluationAgent:
         try:
             state = self.workflow.run(item["question"])
             chunks = list(state.get("chunks") or [])
+            plans = state.get("sub_query_plans") or []
+            all_retrievers = list({r for p in plans for r in p.get("retrievers", [])})
+            max_quotas: dict[str, int] = {}
+            for p in plans:
+                for name, q in (p.get("quotas") or {}).items():
+                    max_quotas[name] = max(max_quotas.get(name, 0), q)
             base.update(
                 {
                     "response": str(state.get("answer") or ""),
                     "contexts": [getattr(chunk, "text", "") for chunk in chunks],
                     "retrieved_chunk_ids": [chunk_id_for_evaluation(chunk) for chunk in chunks],
                     "retrieval_metadata": {
-                        "selected_retrievers": state.get("selected_retrievers", []),
-                        "retriever_quotas": state.get("retriever_quotas", {}),
+                        "selected_retrievers": all_retrievers,
+                        "retriever_quotas": max_quotas,
                         "retrieval_round": state.get("retrieval_round"),
                         "validation_score": state.get("validation_score"),
                         "critic_score": state.get("critic_score"),

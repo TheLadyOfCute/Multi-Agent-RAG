@@ -49,4 +49,5 @@ def create_full_rag_workflow(
         reranker=RerankerAgent(top_k=settings.retrieval_top_k),
         writer=WriterAgent(llm=llm),
         critic=CriticAgent(llm=llm, quality_threshold=0.7),
+        vector_store=vector_store,
     )

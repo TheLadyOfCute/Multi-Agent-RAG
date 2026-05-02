@@ -22,12 +22,6 @@ class AgentState(BaseModel):
     complexity: Optional[float] = Field(None, ge=0.0, le=1.0)
     strategy: Optional[Strategy] = None
 
-    # Planner: Query Router outputs
-    # ["vector", "keyword", "graph"]
-    selected_retrievers: List[str] = Field(default_factory=list)
-    # 每个检索器分配的 top-k 配额，e.g. {"vector": 10, "keyword": 10}
-    retriever_quotas: Dict[str, int] = Field(default_factory=dict)
-
     # Query Decomposer field
     sub_queries: Optional[List[str]] = None
 
@@ -38,6 +32,8 @@ class AgentState(BaseModel):
     # Retrieval outputs
     chunks: List[Chunk] = Field(default_factory=list)
     retrieval_round: int = Field(default=0, ge=0)
+    # 知识库中的总文档数（用于多样性评估）
+    total_docs: int = Field(default=0, ge=0)
     
     # Validator outputs
     validation_status: Optional[str] = None

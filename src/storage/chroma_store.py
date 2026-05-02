@@ -204,6 +204,21 @@ class ChromaVectorStore:
             "total_vectors": total_chunks,
         }
 
+    def count_documents(self) -> int:
+        """统计知识库中不同文档（filename）的数量。"""
+        try:
+            all_metadata = self.collection.get(include=["metadatas"])
+            if not all_metadata or not all_metadata.get("metadatas"):
+                return 0
+            filenames = {
+                m.get("filename", "unknown")
+                for m in all_metadata["metadatas"]
+                if m
+            }
+            return len(filenames)
+        except Exception:
+            return 0
+
     @staticmethod
     def _clean_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
         """Remove hierarchy fields and normalize values for Chroma metadata."""

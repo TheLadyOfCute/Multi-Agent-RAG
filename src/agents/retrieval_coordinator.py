@@ -13,10 +13,9 @@ Swarm Pattern:
 """
 
 from typing import List, Dict, Any
-from collections import defaultdict
 
 from src.agents.base_agent import BaseAgent
-from src.models.agent_state import AgentState, Chunk, Strategy
+from src.models.agent_state import AgentState, Chunk
 from src.utils.exceptions import RetrievalError
 from src.config import get_settings
 from src.utils.retrieval_debug import chunk_dedup_key
@@ -81,8 +80,6 @@ class RetrievalCoordinator(BaseAgent):
             state.metadata["retrieval_coordinator"] = {
                 "round":            current_round,
                 "path":             path_used,
-                "selected_retrievers": list(state.selected_retrievers),
-                "retriever_quotas": dict(state.retriever_quotas),
                 "sub_queries_used": len(state.sub_queries) if state.sub_queries else 1,
                 "sub_query_plans":  len(state.sub_query_plans) if state.sub_query_plans else 0,
                 "total_retrieved":  len(all_results),
@@ -162,175 +159,6 @@ class RetrievalCoordinator(BaseAgent):
         state.metadata["retriever_results"] = retriever_results
         return all_results
 
-    # ── Planner-driven retrieval (v2 compat path) ─────────────────────
-
-    def _retrieve_by_planner_selection(self, state: AgentState) -> List[Chunk]:
-
-        agent_map: Dict[str, Any] = {
-            "vector":  self.vector_agent,
-            "keyword": self.keyword_agent,
-            "graph":   self.graph_agent,
-        }
-
-        all_results: List[Chunk] = []
-        retriever_results: Dict[str, int] = {}
-
-        queries = state.sub_queries or [state.query]
-        for query_idx, query in enumerate(queries):
-            for name in state.selected_retrievers:
-                agent = agent_map.get(name)
-                quota = state.retriever_quotas.get(name, self.top_k)
-
-                if agent is None:
-                    self.log(
-                        f"[PLANNER] Retriever '{name}' not available, skipping",
-                        level="warning",
-                    )
-                    continue
-
-                try:
-                    chunks = agent.search_async(query, top_k=quota)
-                    for c in chunks:
-                        c.metadata["retriever"] = name
-                        c.metadata.setdefault("source", name)
-                        c.metadata["sub_query"] = query
-                        c.metadata["sub_query_idx"] = query_idx
-                        c.metadata["query_used"] = query
-                    all_results.extend(chunks)
-                    retriever_results[name] = retriever_results.get(name, 0) + len(chunks)
-                    self.log(
-                        f"[PLANNER] q{query_idx + 1}/{len(queries)} "
-                        f"{name.upper()} -> {len(chunks)} chunks "
-                        f"(top_k={quota})",
-                        level="info",
-                    )
-                except Exception as exc:
-                    self.log(
-                        f"[PLANNER] Retriever '{name}' failed for q{query_idx + 1}: {exc}",
-                        level="warning",
-                    )
-
-        state.metadata["retriever_results"] = retriever_results
-        return all_results
-
-
-    def _count_by_retriever(self, chunks: List[Chunk]) -> Dict[str, int]:
-        counts: Dict[str, int] = defaultdict(int)
-        for chunk in chunks:
-            source = (
-                chunk.metadata.get("retriever")
-                or chunk.metadata.get("source")
-                or "unknown"
-            )
-            counts[source] += 1
-        return dict(counts)
-
-    # ── Strategy-driven retrieval (legacy fallback paths) ─────────────
-
-    def _retrieve_simple(self, query: str) -> List[Chunk]:
-        """
-        简单查询：仅使用向量检索，跳过关键词和图检索。
-        """
-        self.log(f"[SIMPLE] 向量检索: {query[:50]}", level="info")
-        
-        if not self.vector_agent:
-            self.log("向量检索 agent 不可用，降级为全量 swarm", level="warning")
-            return self._spawn_swarm(query)
-        
-        try:
-            results = self.vector_agent.search_async(query, top_k=self.top_k)
-            self.log(f"[SIMPLE] 向量检索返回 {len(results)} 个块", level="info")
-            return results
-        except Exception as e:
-            self.log(f"[SIMPLE] 向量检索失败: {e}，降级为全量 swarm", level="warning")
-            return self._spawn_swarm(query)
-    
-    def _retrieve_multihop(self, original_query: str, sub_queries: List[str]) -> List[Chunk]:
-        """
-        复杂查询：对每个 sub_query 分别执行向量+关键词检索，结果汇总。
-        每个子查询 top_k 适当缩小，避免结果集过大。
-        """
-        self.log(
-            f"[MULTIHOP] 并行检索 {len(sub_queries)} 个子查询",
-            level="info"
-        )
-        
-        per_query_k = max(3, self.top_k // max(len(sub_queries), 1))
-        all_results: List[Chunk] = []
-        
-        for i, q in enumerate(sub_queries):
-            self.log(f"[MULTIHOP] 子查询 {i+1}/{len(sub_queries)}: {q[:50]}", level="debug")
-            
-            # 向量检索
-            if self.vector_agent:
-                try:
-                    chunks = self.vector_agent.search_async(q, top_k=per_query_k)
-                    # 记录来源子查询
-                    for c in chunks:
-                        c.metadata["sub_query"] = q
-                        c.metadata["sub_query_idx"] = i
-                    all_results.extend(chunks)
-                except Exception as e:
-                    self.log(f"[MULTIHOP] 向量检索子查询 {i+1} 失败: {e}", level="warning")
-            
-            # 关键词检索
-            if self.keyword_agent:
-                try:
-                    chunks = self.keyword_agent.search_async(q, top_k=per_query_k)
-                    for c in chunks:
-                        c.metadata["sub_query"] = q
-                        c.metadata["sub_query_idx"] = i
-                    all_results.extend(chunks)
-                except Exception as e:
-                    self.log(f"[MULTIHOP] 关键词检索子查询 {i+1} 失败: {e}", level="warning")
-        
-        # 同时用原始查询补充一次，保证整体相关性
-        if self.vector_agent:
-            try:
-                extra = self.vector_agent.search_async(original_query, top_k=self.top_k)
-                all_results.extend(extra)
-            except Exception:
-                pass
-        
-        self.log(f"[MULTIHOP] 总计检索 {len(all_results)} 个块", level="info")
-        return all_results
-    
-    def _spawn_swarm(self, query: str) -> List[Chunk]:
-        """Spawn retrieval swarm (private method)."""
-        
-        self.log(f"Spawning retrieval swarm for: {query}")
-        
-        # Collect available agents
-        agents = []
-        
-        if self.vector_agent:
-            agents.append(('vector', self.vector_agent))
-        
-        if self.keyword_agent:
-            agents.append(('keyword', self.keyword_agent))
-        
-        if self.graph_agent:  # ← Just check if exists!
-            agents.append(('graph', self.graph_agent))
-            self.log("Graph search agent included in swarm")
-        else:
-            self.log("Graph search unavailable", level="warning")
-        
-        # Execute agents
-        all_results = []
-        
-        for agent_name, agent in agents:
-            self.log(f"Executing {agent_name} agent...")
-            try:
-                results = agent.search_async(query, top_k=self.top_k)
-                self.log(f"{agent_name}: {len(results)} chunks")
-                all_results.extend(results)
-            except Exception as e:
-                self.log(f"{agent_name} failed: {e}", level="error")
-        
-        self.log(f"Swarm complete: {len(all_results)} chunks from {len(agents)} agents")
-        
-        return all_results
-    
     def _deduplicate(self, chunks: List[Chunk]) -> List[Chunk]:
 
         if not chunks:

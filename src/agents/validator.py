@@ -1,20 +1,3 @@
-"""
-Validator Agent - Tactical Level 2 Agent.
-
-Validates if retrieved chunks are sufficient to answer the query.
-Acts as a quality gate before answer generation.
-
-Validation Factors:
-- Relevance: Do chunks relate to the query? (50%)
-- Coverage: Do chunks cover all query aspects? (30%)
-- Confidence: Are chunks reliable and complete? (20%)
-
-Decision Logic:
-- score >= threshold → PROCEED to answer generation
-- score < threshold AND retries < max → RETRIEVE_MORE
-- retries >= max → PROCEED anyway (force)
-"""
-
 from typing import List
 from langchain_openai import ChatOpenAI
 
@@ -68,7 +51,7 @@ class ValidatorAgent(BaseAgent):
             )
             
             # Step 1: Calculate sufficiency score
-            score = self._calculate_sufficiency(query, chunks)
+            score = self._calculate_sufficiency(query, chunks, state.total_docs)
             state.validation_score = score
             
             self.log(f"Sufficiency score: {score:.3f}", level="info")
@@ -105,18 +88,18 @@ class ValidatorAgent(BaseAgent):
                 }
             ) from e
     
-    def _calculate_sufficiency(self, query: str, chunks: List[Chunk]) -> float:
-        
+    def _calculate_sufficiency(self, query: str, chunks: List[Chunk], total_docs: int = 0) -> float:
+
         if not chunks:
             self.log("No chunks to validate", level="warning")
             return 0.0
-        
+
         try:
             # Factor 1: Relevance (50%)
             relevance_score = self._check_relevance(query, chunks)
-            
+
             # Factor 2: Coverage (30%)
-            coverage_score = self._check_coverage(query, chunks)
+            coverage_score = self._check_coverage(query, chunks, total_docs)
             
             # Factor 3: Confidence (20%)
             confidence_score = self._check_confidence(chunks)
@@ -142,40 +125,42 @@ class ValidatorAgent(BaseAgent):
             return 0.5
     
     def _check_relevance(self, query: str, chunks: List[Chunk]) -> float:
-        """
-        Check if chunks are relevant to query using LLM.
-        
-        Asks Claude to assess how well chunks relate to the query.
-        
-        Args:
-            query: User query string
-            chunks: List of retrieved chunks
-        
-        Returns:
-            Relevance score (0.0-1.0)
-        """
-        # Prepare context from top chunks
-        top_chunks = sorted(chunks, key=lambda c: c.score or 0.0, reverse=True)[:5]
+
+        # Prepare context
         context = "\n\n".join([
             f"Chunk {i+1} (score: {chunk.score:.2f}):\n"
             f"{chunk.text}"
-            for i, chunk in enumerate(top_chunks)
+            for i, chunk in enumerate(chunks)
         ])
         
-        prompt = f"""Assess how relevant these retrieved chunks are to the query.
+        prompt = f"""You are evaluating whether the retrieved chunks are relevant to the user's query.
 
-Query: "{query}"
+Query:
+"{query}"
 
 Retrieved Chunks:
 {context}
 
-Rate relevance on scale 0.0-1.0:
-- 0.0-0.3: Not relevant, chunks don't relate to query
-- 0.3-0.6: Partially relevant, some connection but missing key aspects
-- 0.6-0.9: Relevant, chunks address the query
-- 0.9-1.0: Highly relevant, chunks directly answer the query
+Evaluate relevance based on:
+1. Whether the chunks address the main intent of the query.
+2. Whether they contain information that would help answer the query.
+3. Whether they cover the key entities, constraints, time period, or conditions in the query.
+4. Whether the chunks are specific enough, not merely topically related.
 
-Respond with ONLY a number between 0.0 and 1.0."""
+Scoring guide:
+- 0.0-0.2: Completely irrelevant. No meaningful connection to the query.
+- 0.2-0.4: Weakly relevant. Shares topic or keywords, but does not help answer the query.
+- 0.4-0.6: Partially relevant. Some useful information, but misses important parts of the query.
+- 0.6-0.8: Relevant. Provides useful information that addresses most of the query.
+- 0.8-1.0: Highly relevant. Directly answers the query or contains the key evidence needed to answer it.
+
+Important:
+- Do not reward keyword overlap alone.
+- Penalize chunks that discuss the same topic but answer a different question.
+- If the chunks are insufficient to answer the query, do not score above 0.7.
+- If the chunks directly answer the query, score at least 0.8.
+
+Respond with ONLY one number between 0.0 and 1.0."""
 
         try:
             response = self.llm.invoke(prompt)
@@ -227,47 +212,55 @@ Respond with ONLY a number between 0.0 and 1.0."""
             # Default to moderate if no scores
             return 0.5
     
-    def _check_coverage(self, query: str, chunks: List[Chunk]) -> float:
+    def _check_coverage(self, query: str, chunks: List[Chunk], total_docs: int = 0) -> float:
         """
-        Check if chunks cover all aspects of the query.
-        
-        For simple queries, needs basic coverage.
-        For complex queries, needs multiple aspects covered.
-        
+        评估检索到的文档块对查询的覆盖程度。
+
+        综合考虑两个维度：
+        1. 数量覆盖 — 文档块数量是否足够回答查询中的各个子问题/方面
+        2. 来源多样性 — 文档块是否来自多个不同的文档，避免信息来源单一
+
         Args:
-            query: User query string
-            chunks: List of retrieved chunks
-        
+            query: 用户的查询文本
+            chunks: 检索到的文档块列表
+            total_docs: 知识库中的总文档数，用于相对多样性评估
+
         Returns:
-            Coverage score (0.0-1.0)
+            覆盖度评分，范围 [0.0, 1.0]，越高表示覆盖越充分
         """
         if not chunks:
             return 0.0
-        
-        # Extract query aspects
+
+        # 将查询转为小写，便于后续关键词匹配
         query_lower = query.lower()
-        
-        # Count questions/sub-parts
+
+        # 统计查询中的问号数量（每个问号通常对应一个子问题）
         question_marks = query.count("?")
+        # 统计 "and"/"or" 连接词数量（每个连接词暗示查询包含多个方面）
         and_or_count = query_lower.count(" and ") + query_lower.count(" or ")
-        
-        # Estimate number of aspects
+
+        # 根据问号和连接词估算查询包含的方面数，至少为 1
         num_aspects = max(1, question_marks + and_or_count)
-        
-        # Check chunk count relative to aspects
+
+        # 当前检索到的文档块总数
         chunk_count = len(chunks)
-        
-        # Simple heuristic: need at least 2 chunks per aspect
+
+        # 启发式规则：每个查询方面至少需要 2 个文档块来充分回答
         ideal_chunks = num_aspects * 2
+        # 计算数量覆盖比，上限为 1.0（超过理想数量不再加分）
         coverage_ratio = min(chunk_count / ideal_chunks, 1.0)
-        
-        # Also consider chunk diversity (different sources)
+
+        # 计算来源多样性：统计检索命中了多少个不同文档
         unique_docs = len(set(c.doc_id for c in chunks if c.doc_id))
-        diversity_score = min(unique_docs / 3, 1.0) if unique_docs > 0 else 0.3
-        
-        # Combine ratio and diversity
+        # 多样性基准取实际文档数和查询方面数的较小值，至少为 1
+        # 有 chunks 必然有文档，total_docs >= 1
+        diversity_baseline = max(1, min(total_docs, num_aspects, 3))
+        # 无文档信息时给 0.5 的基础分
+        diversity_score = min(unique_docs / diversity_baseline, 1.0) if unique_docs > 0 else 0.5
+
+        # 加权合成最终覆盖度评分：数量覆盖占 70%，来源多样性占 30%
         coverage_score = (coverage_ratio * 0.7) + (diversity_score * 0.3)
-        
+
         return coverage_score
     
     def _check_confidence(self, chunks: List[Chunk]) -> float:
@@ -288,6 +281,7 @@ Respond with ONLY a number between 0.0 and 1.0."""
         if not chunks:
             return 0.0
         
+        #c.score在reranker阶段已经被归一化到0-1范围内
         scores = [c.score for c in chunks if c.score is not None]
         
         if not scores:
@@ -301,6 +295,7 @@ Respond with ONLY a number between 0.0 and 1.0."""
         
         # Score variance (consistency)
         if len(scores) > 1:
+            #方差越小，说明分数越一致，置信度越高
             variance = sum((s - avg_score) ** 2 for s in scores) / len(scores)
             consistency = max(0.0, 1.0 - variance)
         else:

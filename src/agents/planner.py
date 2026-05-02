@@ -14,10 +14,8 @@ state.sub_query_plans  : List[Dict] — per-sub-query retriever config
       {"query": "...", "retrievers": ["vector"], "quotas": {"vector": 10}},
       {"query": "...", "retrievers": ["keyword", "graph"], "quotas": {...}},
     ]
-state.selected_retrievers : union of all retrievers (backward-compat)
-state.retriever_quotas    : max quota per retriever  (backward-compat)
-state.strategy            : SIMPLE / DECOMPOSE       (backward-compat)
-state.complexity          : float                    (backward-compat)
+state.strategy            : SIMPLE / DECOMPOSE
+state.complexity          : float
 """
 
 import re
@@ -77,10 +75,8 @@ class PlannerAgent(BaseAgent):
 
         Reads  : state.sub_queries  (set by QueryDecomposer)
         Writes : state.sub_query_plans
-                 state.selected_retrievers  (union, backward-compat)
-                 state.retriever_quotas     (max per name, backward-compat)
-                 state.strategy             (backward-compat)
-                 state.complexity           (backward-compat)
+                 state.strategy
+                 state.complexity
         """
         try:
             sub_queries = state.sub_queries or [state.query]
@@ -95,20 +91,10 @@ class PlannerAgent(BaseAgent):
             # ── Step 2: Write primary output ───────────────────────────
             state.sub_query_plans = plans
 
-            # ── Step 3: Backward-compat aggregated fields ──────────────
-            all_retrievers: List[str] = []
-            union_quotas:   Dict[str, int] = {}
-            for p in plans:
-                for name in p["retrievers"]:
-                    if name not in all_retrievers:
-                        all_retrievers.append(name)
-                    q = p["quotas"].get(name, _DEFAULT_QUOTA)
-                    union_quotas[name] = max(union_quotas.get(name, 0), q)
-
-            state.selected_retrievers = all_retrievers
-            state.retriever_quotas    = union_quotas
-
             # Infer strategy from whether decomposition produced >1 query
+            all_retrievers = [
+                name for p in plans for name in p["retrievers"]
+            ]
             state.strategy = (
                 Strategy.DECOMPOSE if len(sub_queries) > 1 else Strategy.SIMPLE
             )
@@ -122,13 +108,11 @@ class PlannerAgent(BaseAgent):
 
             # ── Step 4: Metadata ───────────────────────────────────────
             state.metadata["planner"] = {
-                "version":             "3.0.0 (per-sub-query-planner)",
-                "sub_query_count":     len(sub_queries),
-                "sub_query_plans":     plans,
-                "selected_retrievers": all_retrievers,
-                "retriever_quotas":    union_quotas,
-                "strategy":            state.strategy,
-                "complexity":          state.complexity,
+                "version":         "3.0.0 (per-sub-query-planner)",
+                "sub_query_count": len(sub_queries),
+                "sub_query_plans": plans,
+                "strategy":        state.strategy,
+                "complexity":      state.complexity,
             }
 
             return state

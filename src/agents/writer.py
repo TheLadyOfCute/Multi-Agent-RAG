@@ -68,7 +68,7 @@ class WriterAgent(BaseAgent):
 
     def _generate_answer(self, query: str, chunks: List[Chunk]) -> str:
         context_parts = []
-        for i, chunk in enumerate(chunks, 1):
+        for i, chunk in enumerate(chunks, 1):#1开始编号
             source = chunk.metadata.get("filename", "unknown")
             score = chunk.score if chunk.score else 0.0
             context_parts.append(f"[{i}] (Source: {source}, Relevance: {score:.2f})\n{chunk.text}\n")
@@ -102,27 +102,33 @@ Answer (inline citations only, no Sources section):"""
             raise WriterError(message=f"LLM generation failed: {str(e)}", details={"query": query}) from e
 
     def _format_answer(self, answer: str, chunks: List[Chunk]) -> str:
+        """格式化答案，将引用标记转换为带来源信息的格式。"""
+        # 如果未启用来源引用，直接返回原始答案
         if not self.include_sources:
             return answer
 
+        # 从答案中提取所有引用标记 [1], [2] 等
         citations = re.findall(r"\[(\d+)\]", answer)
         unique_citations = sorted(set(int(c) for c in citations))
+        # 没有引用标记则直接返回原始答案
         if not unique_citations:
             return answer
 
+        # 按来源文件名对引用进行分组
         grouped_sources: Dict[str, List[int]] = {}
-        source_names: Dict[str, str] = {}
         for citation_num in unique_citations:
+            # 确保引用编号在有效范围内
             if citation_num <= len(chunks):
                 chunk = chunks[citation_num - 1]
+                # 获取来源文件名，未知则标记为 "Unknown source"
                 source = str(chunk.metadata.get("filename", "Unknown source"))
                 grouped_sources.setdefault(source, []).append(citation_num)
-                source_names[source] = source
 
+        # 构建 Sources 部分，将同一来源的引用合并显示
         sources_section = "\n\n---\n\n**Sources:**\n"
         for source_key, citation_nums in grouped_sources.items():
             citation_label = ", ".join(str(num) for num in citation_nums)
-            sources_section += f"\n[{citation_label}] {source_names[source_key]}"
+            sources_section += f"\n[{citation_label}] {source_key}"
         return answer + sources_section
 
     def _count_citations(self, answer: str) -> int:
