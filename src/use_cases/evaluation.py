@@ -87,6 +87,27 @@ class SubmitRagasEvaluationUseCase:
 
     def run(self, task_id: str, update_task: Callable[..., None], test_file: str, reuse_rag_outputs: bool) -> dict[str, Any]:
         from src.agents.ragas_evaluation_agent import RagasEvaluationAgent
+
+        def progress_callback(current: int, total: int, stage: str, row: dict) -> None:
+            update_task(
+                task_id,
+                progress=current / max(total, 1),
+                current=current,
+                total=total,
+                stage=stage,
+                last_id=row.get("id", ""),
+            )
+
+        # 复用已有 RAG 输出时，直接进入评估，跳过向量库、BM25、图谱、工作流的初始化。
+        if reuse_rag_outputs:
+            update_task(task_id, progress=0.1, stage="loading_cached_outputs", last_id="reading cached RAG outputs")
+            return RagasEvaluationAgent(workflow=None).run(
+                test_file=test_file,
+                output_dir="outputs/evaluations",
+                reuse_rag_outputs=True,
+                progress_callback=progress_callback,
+            )
+
         from src.utils.persistence_restore import restore_or_rebuild_bm25
 
         update_task(task_id, progress=0.03, stage="opening_vector_store", last_id="opening Chroma vector store")
@@ -113,7 +134,6 @@ class SubmitRagasEvaluationUseCase:
             update_task(task_id, progress=0.2, stage="initializing_workflow", last_id="initializing multi-agent workflow")
             from src.workflows.factory import create_full_rag_workflow
 
-            # 评测复用和在线问答相同的工作流，确保测出来的是“真实线上链路”的效果。
             workflow = create_full_rag_workflow(
                 vector_store=vector_store,
                 embedder=self.embedder,
@@ -121,21 +141,11 @@ class SubmitRagasEvaluationUseCase:
                 knowledge_graph=knowledge_graph,
             )
 
-            def progress_callback(current: int, total: int, stage: str, row: dict) -> None:
-                update_task(
-                    task_id,
-                    progress=current / max(total, 1),
-                    current=current,
-                    total=total,
-                    stage=stage,
-                    last_id=row.get("id", ""),
-                )
-
             update_task(task_id, progress=0.25, stage="running_ragas", last_id="running RAGAS evaluation")
             return RagasEvaluationAgent(workflow=workflow).run(
                 test_file=test_file,
                 output_dir="outputs/evaluations",
-                reuse_rag_outputs=reuse_rag_outputs,
+                reuse_rag_outputs=False,
                 progress_callback=progress_callback,
             )
         finally:

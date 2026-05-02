@@ -124,7 +124,7 @@ class RagasEvaluationAgent:
         rows = []
         total = len(questions)
         for index, item in enumerate(questions, start=1):
-            row = self._run_one_question(item)
+            row = self._run_one_question(item)#每个问题执行完整工作流
             rows.append(row)
             if progress_callback:
                 progress_callback(index, total, "rag", row)
@@ -150,6 +150,7 @@ class RagasEvaluationAgent:
             state = self.workflow.run(item["question"])
             chunks = list(state.get("chunks") or [])
             plans = state.get("sub_query_plans") or []
+            #收集所有子问题的检索并去重
             all_retrievers = list({r for p in plans for r in p.get("retrievers", [])})
             max_quotas: dict[str, int] = {}
             for p in plans:

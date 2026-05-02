@@ -9,4 +9,4 @@ class ChatRequest(BaseModel):
 
 class RagasRequest(BaseModel):
     test_file: str = "data/test_questions.json"
-    reuse_rag_outputs: bool = False
+    reuse_rag_outputs: bool = False#是否重用之前的查询的输出结果

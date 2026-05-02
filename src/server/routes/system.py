@@ -52,10 +52,10 @@ def graph_stats() -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+#轮询任务状态（所有任务都在这检测状态）
 @router.get("/tasks/{task_id}")
 def task_status(task_id: str) -> dict[str, Any]:
     return get_task_registry().get_task(task_id)
-
 
 @router.get("/performance")
 def performance() -> dict[str, Any]:

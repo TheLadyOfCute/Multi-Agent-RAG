@@ -91,7 +91,7 @@ class RAGASEvaluator:
         )
         # max_wait 设为 300s，避免慢速 LLM 调用被误判为超时
         self.run_config = run_config or RunConfig(
-            max_workers=1, max_retries=3, max_wait=300, timeout=300
+            max_workers=3, max_retries=3, max_wait=300, timeout=300
         )
         self.metrics = [
             faithfulness,

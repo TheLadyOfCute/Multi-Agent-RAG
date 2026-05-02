@@ -5,6 +5,7 @@ Reviews generated answers for quality and provides improvement feedback.
 Triggers regeneration if quality is below threshold.
 """
 
+import json
 from typing import List, Dict, Any, Optional
 from enum import Enum
 
@@ -30,32 +31,7 @@ class CriticError(AgenticRAGException):
 
 
 class CriticAgent(BaseAgent):
-    """
-    Critic Agent - Answer quality review.
-    
-    Reviews generated answers for:
-    - Accuracy (based on sources)
-    - Completeness (addresses all parts of query)
-    - Citation quality (proper attribution)
-    - Clarity (well-structured and readable)
-    - Relevance (directly answers question)
-    
-    Makes decisions:
-    - APPROVED: Answer is good quality
-    - REGENERATE: Answer needs improvement
-    - INSUFFICIENT_INFO: Not enough context to answer
-    
-    Attributes:
-        llm: Language model for critique
-        quality_threshold: Minimum score to approve (0.0-1.0)
-        max_iterations: Maximum regeneration attempts
-        
-    Example:
-        >>> agent = CriticAgent(llm=llm, quality_threshold=0.7)
-        >>> state = AgentState(query="...", answer="...", chunks=[...])
-        >>> result = agent.run(state)
-        >>> print(result.critic_decision)  # APPROVED or REGENERATE
-    """
+
     
     def __init__(
         self,
@@ -63,19 +39,7 @@ class CriticAgent(BaseAgent):
         quality_threshold: float = 0.7,
         max_iterations: int = 3
     ):
-        """
-        Initialize Critic Agent.
         
-        Args:
-            llm: ChatOpenAI instance (creates if None)
-            quality_threshold: Minimum quality score (0.0-1.0)
-            max_iterations: Max regeneration attempts
-        
-        Example:
-            >>> from langchain_openai import ChatOpenAI
-            >>> llm = ChatOpenAI(model="qwen-plus")
-            >>> agent = CriticAgent(llm=llm, quality_threshold=0.8)
-        """
         super().__init__(name="critic", version="1.0.0")
         
         settings = get_settings()
@@ -102,23 +66,7 @@ class CriticAgent(BaseAgent):
         )
     
     def execute(self, state: AgentState) -> AgentState:
-        """
-        Execute answer critique.
-        
-        Args:
-            state: Current state with query, answer, and chunks
-        
-        Returns:
-            Updated state with critique results
-        
-        Raises:
-            CriticError: If critique fails
-        
-        Example:
-            >>> state = AgentState(query="...", answer="...", chunks=[...])
-            >>> result = agent.execute(state)
-            >>> print(result.critic_score)  # 0.0-1.0
-        """
+
         try:
             query = state.query
             answer = state.answer
@@ -144,10 +92,7 @@ class CriticAgent(BaseAgent):
             state.critic_scores = critique_result['scores']
             
             # Make decision
-            decision = self._make_decision(
-                critique_result['overall_score'],
-                critique_result
-            )
+            decision = self._make_decision(critique_result['overall_score'])
             state.critic_decision = decision
             
             # Add metadata
@@ -179,20 +124,10 @@ class CriticAgent(BaseAgent):
         answer: str,
         chunks: List
     ) -> Dict[str, Any]:
-        """
-        Critique answer using LLM.
         
-        Args:
-            query: User query
-            answer: Generated answer
-            chunks: Source chunks
-        
-        Returns:
-            Dictionary with scores and feedback
-        """
         # Prepare context
         context_parts = []
-        for i, chunk in enumerate(chunks[:5], 1):  # Use top 5
+        for i, chunk in enumerate(chunks, 1):  # Use top 5
             context_parts.append(f"[{i}] {chunk.text}")
         
         context = "\n".join(context_parts)
@@ -216,20 +151,18 @@ Evaluate the answer on these criteria (score each 0.0-1.0):
 4. CLARITY: Is the answer well-structured and easy to understand?
 5. RELEVANCE: Does it directly answer the question asked?
 
-Respond in this exact format:
-
-SCORES:
-accuracy: [0.0-1.0]
-completeness: [0.0-1.0]
-citations: [0.0-1.0]
-clarity: [0.0-1.0]
-relevance: [0.0-1.0]
-
-FEEDBACK:
-[Specific suggestions for improvement, or "No improvements needed" if excellent]
-
-RECOMMENDATION:
-[Either "APPROVED" or "REGENERATE"]"""
+Respond with a raw JSON object (not markdown wrapped) strictly using this schema:
+{{
+  "scores": {{
+    "accuracy": [float 0.0-1.0],
+    "completeness": [float 0.0-1.0],
+    "citations": [float 0.0-1.0],
+    "clarity": [float 0.0-1.0],
+    "relevance": [float 0.0-1.0]
+  }},
+  "feedback": "Specific suggestions for improvement, or 'No improvements needed' if excellent",
+  "recommendation": "APPROVED" or "REGENERATE"
+}}"""
         
         # Get critique from LLM
         try:
@@ -249,44 +182,39 @@ RECOMMENDATION:
     
     def _parse_critique(self, critique_text: str) -> Dict[str, Any]:
         """
-        Parse LLM critique response.
-        
+        Parse LLM critique response (expected JSON).
+
         Args:
             critique_text: Raw LLM response
-        
+
         Returns:
-            Parsed scores and feedback
+            Parsed scores, feedback, and recommendation
         """
         import re
-        
+
+        # Strip markdown code fences if LLM wrapped them anyway
+        cleaned = re.sub(r"```(?:json)?\s*", "", critique_text).strip()
+        cleaned = cleaned.rstrip("`").strip()
+
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError:
+            raise CriticError(
+                message="LLM returned invalid JSON for critique",
+                details={"raw_response": critique_text[:500]},
+            )
+
+        # Validate and clamp scores
+        required_keys = {"accuracy", "completeness", "citations", "clarity", "relevance"}
+        raw_scores = data.get("scores", {})
         scores = {}
-        feedback = ""
-        
-        # Extract scores
-        score_patterns = {
-            'accuracy': r'accuracy:\s*([0-9.]+)',
-            'completeness': r'completeness:\s*([0-9.]+)',
-            'citations': r'citations:\s*([0-9.]+)',
-            'clarity': r'clarity:\s*([0-9.]+)',
-            'relevance': r'relevance:\s*([0-9.]+)'
-        }
-        
-        for criterion, pattern in score_patterns.items():
-            match = re.search(pattern, critique_text, re.IGNORECASE)
-            if match:
-                scores[criterion] = float(match.group(1))
-            else:
-                scores[criterion] = 0.5  # Default if not found
-        
-        # Extract feedback
-        feedback_match = re.search(
-            r'FEEDBACK:\s*(.+?)(?=RECOMMENDATION:|$)',
-            critique_text,
-            re.DOTALL | re.IGNORECASE
-        )
-        if feedback_match:
-            feedback = feedback_match.group(1).strip()
-        
+        for key in required_keys:
+            val = raw_scores.get(key, 0.5)
+            scores[key] = max(0.0, min(1.0, float(val)))
+
+        feedback = str(data.get("feedback", ""))
+        recommendation = str(data.get("recommendation", "REGENERATE")).upper()
+
         # Calculate overall score (weighted average)
         weights = {
             'accuracy': 0.3,
@@ -295,45 +223,26 @@ RECOMMENDATION:
             'clarity': 0.15,
             'relevance': 0.15
         }
-        
+
         overall_score = sum(
-            scores.get(criterion, 0.5) * weight
+            scores[criterion] * weight
             for criterion, weight in weights.items()
         )
-        
+
         return {
             'scores': scores,
             'overall_score': overall_score,
-            'feedback': feedback
+            'feedback': feedback,
+            'recommendation': recommendation,
         }
     
     def _make_decision(
         self,
         overall_score: float,
-        critique_result: Dict[str, Any]
     ) -> CriticDecision:
-        """
-        Make decision based on critique.
-        
-        Args:
-            overall_score: Overall quality score
-            critique_result: Full critique results
-        
-        Returns:
-            CriticDecision (APPROVED or REGENERATE)
-        """
         # Check if score meets threshold
         if overall_score >= self.quality_threshold:
             return CriticDecision.APPROVED
-        
-        # Check for critical failures
-        scores = critique_result['scores']
-        if scores.get('accuracy', 0) < 0.4:
+        else:
             return CriticDecision.REGENERATE
-        
-        if scores.get('relevance', 0) < 0.4:
-            return CriticDecision.REGENERATE
-        
-        # Below threshold
-        return CriticDecision.REGENERATE
     

@@ -20,7 +20,6 @@ from src.agents.writer import WriterAgent
 from src.agents.critic import CriticAgent, CriticDecision
 from src.utils.logger import setup_logger
 from src.utils.workflow_trace import format_stage_trace, summarize_chunks
-from src.utils.retrieval_debug import format_ranked_chunk_line
 from src.utils.exceptions import OrchestrationError
 
 
@@ -28,31 +27,6 @@ WorkflowState: TypeAlias = Dict[str, Any]
 
 
 class CompleteAgenticRAGWorkflow:
-    """
-    Complete LangGraph workflow for the Agentic RAG system.
-
-    Orchestrates all agents in a multi-stage pipeline:
-
-    Stage 1 Decomposition + Planning
-        Decomposer -> Planner
-
-    Stage 2 Retrieval + Candidate pool (with validator retry loop)
-        Retrieval Coordinator -> Reranker -> Validator
-        (Validator loops back to Retrieval Coordinator if quality gate fails)
-
-    Stage 3 Generation (writer self-reflection loop)
-        Writer -> Critic
-
-    Parameters
-    ----------
-    planner : PlannerAgent
-    decomposer : QueryDecomposer
-    coordinator : RetrievalCoordinator
-    validator : ValidatorAgent
-    reranker : RerankerAgent
-    writer : WriterAgent
-    critic : CriticAgent
-    """
 
     def __init__(
         self,
@@ -483,9 +457,9 @@ class CompleteAgenticRAGWorkflow:
     def _should_regenerate(
         self, state: AgentState
     ) -> Literal["regenerate", "finish"]:
-        decision           = state.critic_decision
+        decision= state.critic_decision
         regeneration_count = state.metadata.get("regeneration_count", 0)
-        max_iterations     = self.critic.max_iterations
+        max_iterations= self.critic.max_iterations
 
         if decision == CriticDecision.APPROVED:
             self.logger.info("Critic APPROVEDfinish")
@@ -512,17 +486,6 @@ class CompleteAgenticRAGWorkflow:
     # ------------------------------------------------------------------
 
     def run(self, query: str) -> WorkflowState:
-        """
-        Execute the full pipeline for a user query.
-
-        Parameters
-        ----------
-        query : str
-
-        Returns
-        -------
-        Final workflow state as a dict.
-        """
         self.logger.info(f"Starting workflow for: {query[:80]}")
         try:
             initial_state = AgentState(query=query)

@@ -160,7 +160,7 @@ class RunChatQueryUseCase:
         result_chunks = list(result.get("chunks") or [])
         result_strategy = self._enum_value(result.get("strategy"))
         result_metadata = result.get("metadata", {}) or {}
-        self.cache_service.set_answer(#???query?????
+        self.cache_service.set_answer(
             query,
             knowledge_state_hash,
             {
@@ -183,7 +183,8 @@ class RunChatQueryUseCase:
 
         progress(1.0, "done", f"completed in {latency:.2f}s")
         return assistant_message
-
+    
+    #提取真实引用的chunk_id列表，供前端高亮使用
     @staticmethod
     def _format_citations(result: Any) -> list[dict[str, Any]]:
         citations = []

@@ -19,6 +19,7 @@ router = APIRouter(prefix="/api/evaluation", tags=["evaluation"])
 
 @router.get("/questions")
 def evaluation_questions(test_file: str = "data/test_questions.json") -> dict[str, Any]:
+    """加载指定测试问题文件并返回问题列表。"""
     path = Path(test_file)
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Test questions file not found: {path}")
@@ -30,6 +31,7 @@ def evaluation_questions(test_file: str = "data/test_questions.json") -> dict[st
 
 @router.post("/questions")
 async def upload_evaluation_questions(file: UploadFile = File(...)) -> dict[str, Any]:
+    """上传 JSON 格式的测试问题文件并保存。"""
     if not (file.filename or "").lower().endswith(".json"):
         raise HTTPException(status_code=400, detail="Only JSON files are supported.")
     content = await file.read()
@@ -41,6 +43,7 @@ async def upload_evaluation_questions(file: UploadFile = File(...)) -> dict[str,
 
 @router.post("/ragas")
 def start_ragas(request: RagasRequest) -> dict[str, str]:
+    """提交 RAGAS 评估任务，返回 task_id 供前端轮询。"""
     if not Path(request.test_file).exists():
         raise HTTPException(status_code=404, detail=f"Test file not found: {request.test_file}")
     return {
