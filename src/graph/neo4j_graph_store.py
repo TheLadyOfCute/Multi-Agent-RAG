@@ -49,20 +49,38 @@ class Neo4jGraphStore:
 
     def is_empty(self) -> bool:
         with self.driver.session() as session:
+            label_row = session.run(
+                "CALL db.labels() YIELD label RETURN collect(label) AS labels"
+            ).single()
+            labels = set(label_row["labels"] if label_row else [])
+            if "Entity" not in labels:
+                return True
             row = session.run("MATCH (e:Entity) RETURN count(e) AS count").single()
         return not row or int(row["count"]) == 0
 
     def counts(self) -> Dict[str, int]:
         with self.driver.session() as session:
-            row = session.run(
-                "MATCH (e:Entity) "
-                "WITH count(e) AS nodes "
-                "OPTIONAL MATCH ()-[r:RELATED_TO]->() "
-                "RETURN nodes, count(r) AS edges"
+            label_row = session.run(
+                "CALL db.labels() YIELD label RETURN collect(label) AS labels"
             ).single()
-        if not row:
-            return {"nodes": 0, "edges": 0}
-        return {"nodes": int(row["nodes"]), "edges": int(row["edges"])}
+            labels = set(label_row["labels"] if label_row else [])
+            if "Entity" not in labels:
+                return {"nodes": 0, "edges": 0}
+
+            node_row = session.run("MATCH (e:Entity) RETURN count(e) AS nodes").single()
+            nodes = int(node_row["nodes"]) if node_row else 0
+
+            type_row = session.run(
+                "CALL db.relationshipTypes() YIELD relationshipType "
+                "RETURN collect(relationshipType) AS types"
+            ).single()
+            relationship_types = set(type_row["types"] if type_row else [])
+            if "RELATED_TO" not in relationship_types:
+                return {"nodes": nodes, "edges": 0}
+
+            edge_row = session.run("MATCH ()-[r:RELATED_TO]->() RETURN count(r) AS edges").single()
+            edges = int(edge_row["edges"]) if edge_row else 0
+        return {"nodes": nodes, "edges": edges}
 
     def build_from_chunks(
         self,

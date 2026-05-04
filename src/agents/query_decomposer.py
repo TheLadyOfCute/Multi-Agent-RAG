@@ -159,8 +159,9 @@ class QueryDecomposer(BaseAgent):
         """
         Break a complex query into 2-4 focused sub-queries for retrieval.
 
-        Prompt is intentionally kept identical to the original v1 prompt
-        so that existing behaviour is preserved.
+        Sub-queries should stay natural enough for entity extraction. Keyword
+        fragments can work for vector/BM25 retrieval but often break NER-backed
+        graph retrieval.
         """
         prompt = f"""You are a query decomposition module for a retrieval system.
 Your goal is to break a complex question into a minimal set of high-quality sub-queries for retrieval.
@@ -169,17 +170,29 @@ Original Query: {query}
 
 Strict requirements:
 1. Output ONLY 2-4 sub-queries. Never exceed 4.
-2. Each sub-query must be short, focused, and retrieval-friendly (avoid long sentences).
+2. Each sub-query must be a complete, natural-language question, not a keyword fragment.
 3. Each sub-query should target a single aspect (no multi-aspect mixing).
 4. Avoid semantic overlap between sub-queries.
 5. Do NOT include summarization or conclusion-type queries.
-6. Prefer concrete, keyword-rich phrasing over abstract wording.
-7. Ensure sub-queries are diverse enough to cover different perspectives of the original question.
+6. Preserve the original core entity names, acronyms, product names, method names, and paper-specific terms in every sub-query where they are relevant.
+7. Keep sub-queries concise, but do not remove grammar words if doing so makes the query unnatural.
+8. Ensure sub-queries are diverse enough to cover different perspectives of the original question.
+
+Bad examples:
+- "AGCD two phases names"
+- "first phase mechanism in AGCD"
+- "second phase mechanism in AGCD"
+
+Good examples:
+- "What are the two phases of AGCD called?"
+- "What happens during the first phase of AGCD?"
+- "What happens during the second phase of AGCD?"
 
 Optimization priorities:
 - Minimize total query count
 - Maximize information coverage
-- Improve retrieval precision (vector + keyword)
+- Improve retrieval precision across vector, keyword, and graph retrieval
+- Keep each query natural enough for named-entity recognition
 
 Output format — return ONLY a JSON array, no explanation:
 [

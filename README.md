@@ -276,14 +276,17 @@ pip install -r requirements.txt
 如需使用 spaCy 图谱抽取，请确保安装可用模型，例如：
 
 ```bash
-python -m spacy download en_core_web_sm
+python -m spacy download en_core_web_lg
 ```
 
-### 2. 启动基础设施
+### 2. docker部署
 
 `docker-compose.yml` 当前提供 Neo4j 和 Redis：
 
 ```bash
+#停止并删除容器
+docker compose down -v
+#部署
 docker compose up -d
 ```
 
@@ -302,44 +305,12 @@ Neo4j: neo4j / multirag_neo4j
 Redis: redis://localhost:6379
 ```
 
-### 3. 配置 `.env`
-
-至少需要：
-
-```env
-DASHSCOPE_API_KEY=your_key
-DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-LLM_MODEL=qwen3.6-plus
-EMBEDDING_MODEL=text-embedding-v4
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=multirag_neo4j
-REDIS_URL=redis://localhost:6379
-CACHE_ENABLED=true
-CACHE_TTL=3600
-```
-
-常用可选配置：
-
-```env
-API_HOST=127.0.0.1
-API_PORT=8000
-API_RELOAD=true
-CHROMA_PERSIST_DIR=data/chroma_db
-BM25_INDEX_PATH=data/bm25_index.pkl
-UPLOAD_DIR=data/uploads
-RETRIEVAL_TOP_K=10
-VALIDATOR_THRESHOLD=0.7
-CRITIC_MAX_ITERATIONS=2
-COHERE_API_KEY=
-```
-
-### 4. 启动后端
+### 3. 启动后端
 
 推荐：
 
 ```bash
-uvicorn src.server.main:app --reload --no-access-log
+uvicorn src.server.main:app --reload
 ```
 
 也可以使用模块入口，它会读取 `API_HOST`、`API_PORT`、`API_RELOAD`：
@@ -348,15 +319,7 @@ uvicorn src.server.main:app --reload --no-access-log
 python -m src.server.main
 ```
 
-健康检查：
-
-```text
-GET http://127.0.0.1:8000/api/health
-GET http://127.0.0.1:8000/api/state
-GET http://127.0.0.1:8000/api/performance
-```
-
-### 5. 启动前端
+### 4. 启动前端
 
 ```bash
 cd web

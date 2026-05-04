@@ -84,6 +84,7 @@ class EntityExtractor:
         entities = []
         
         # Standard NER entities
+        matched_spans = []
         for ent in doc.ents:
             if ent.label_ in self.target_labels:
                 entity = Entity(
@@ -93,11 +94,27 @@ class EntityExtractor:
                     end=ent.end_char
                 )
                 entities.append(entity)
+                matched_spans.append((ent.start_char, ent.end_char))
+
+        # Domain papers often use short acronyms that spaCy misses in terse
+        # sub-queries, e.g. "AGCD two phases names".
+        for match in re.finditer(r"(?<![A-Za-z0-9])(?:[A-Z][A-Z0-9]{1,})(?![A-Za-z0-9])", text):
+            start, end = match.span()
+            if any(start < existing_end and end > existing_start for existing_start, existing_end in matched_spans):
+                continue
+            matched_spans.append((start, end))
+            entities.append(
+                Entity(
+                    text=match.group(0),
+                    label="ACRONYM",
+                    start=start,
+                    end=end,
+                )
+            )
         
         # ========== ADD CUSTOM TECH TERMS ==========
         # Find tech terms manually
         text_lower = text.lower()
-        matched_spans = []
         for term in sorted(self.tech_terms, key=len, reverse=True):
             pattern = self._term_pattern(term)
             match = re.search(pattern, text_lower)

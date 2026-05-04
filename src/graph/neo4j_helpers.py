@@ -104,16 +104,32 @@ def _query_neo4j_stats_direct() -> dict[str, Any]:
         # 创建会话并执行统计查询
         with driver.session() as session:
             # 查询 Entity 节点数量和 RELATED_TO 关系数量
-            count_row = session.run(
-                "MATCH (e:Entity) "
-                "WITH count(e) AS nodes "
-                "OPTIONAL MATCH ()-[r:RELATED_TO]->() "
-                "RETURN nodes, count(r) AS edges"
+            label_row = session.run(
+                "CALL db.labels() YIELD label RETURN collect(label) AS labels"
             ).single()
+            labels = set(label_row["labels"] if label_row else [])
+            if "Entity" not in labels:
+                return {"available": True, "counts": {"nodes": 0, "edges": 0}, "top_entities": []}
+
+            type_row = session.run(
+                "CALL db.relationshipTypes() YIELD relationshipType "
+                "RETURN collect(relationshipType) AS types"
+            ).single()
+            relationship_types = set(type_row["types"] if type_row else [])
+
+            node_row = session.run("MATCH (e:Entity) RETURN count(e) AS nodes").single()
+            nodes = int(node_row["nodes"]) if node_row else 0
+            edges = 0
+            if "RELATED_TO" in relationship_types:
+                edge_row = session.run("MATCH ()-[r:RELATED_TO]->() RETURN count(r) AS edges").single()
+                edges = int(edge_row["edges"]) if edge_row else 0
 
             # 如果没有节点，则认为图谱当前不可用或为空
-            if not count_row or int(count_row["nodes"]) == 0:
-                return {"available": False, "counts": {"nodes": 0, "edges": 0}, "top_entities": []}
+            if nodes == 0:
+                return {"available": True, "counts": {"nodes": 0, "edges": 0}, "top_entities": []}
+
+            if "RELATED_TO" not in relationship_types:
+                return {"available": True, "counts": {"nodes": nodes, "edges": 0}, "top_entities": []}
 
             # 查询连接度最高的前 5 个实体
             top_rows = session.run(
@@ -126,7 +142,7 @@ def _query_neo4j_stats_direct() -> dict[str, Any]:
             # 组装 Neo4j 图谱统计结果
             return {
                 "available": True,
-                "counts": {"nodes": int(count_row["nodes"]), "edges": int(count_row["edges"])},
+                "counts": {"nodes": nodes, "edges": edges},
                 "top_entities": [[row["name"], float(row["degree"])] for row in top_rows],
             }
     finally:
