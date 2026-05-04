@@ -163,13 +163,17 @@ class ChromaVectorStore:
 
         return formatted_results
 
-    def delete_document_chunks(self, filename: str) -> int:
-        """Delete all chunks whose metadata filename matches the given name."""
+    def get_document_chunk_ids(self, filename: str) -> List[str]:
+        """Return chunk ids whose metadata filename matches the given name."""
         if not filename:
-            return 0
+            return []
 
         response = self.collection.get(where={"filename": filename})
-        ids = response.get("ids") or []
+        return list(response.get("ids") or [])
+
+    def delete_document_chunks(self, filename: str) -> int:
+        """Delete all chunks whose metadata filename matches the given name."""
+        ids = self.get_document_chunk_ids(filename)
         if not ids:
             return 0
 

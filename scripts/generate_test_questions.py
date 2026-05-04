@@ -6,6 +6,7 @@ import json
 import random
 import re
 import sys
+from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,29 @@ from langchain_openai import ChatOpenAI
 
 from src.config import get_settings
 
+
+# ──────────────────────────────────────────────────────────────────────
+# Parameters: edit this dictionary to configure all defaults in one place.
+# CLI arguments override these values.
+# ──────────────────────────────────────────────────────────────────────
+DEFAULT_CONFIG: dict[str, Any] = {
+    # ── Input / Output ──
+    "input_path": "data/Deep_learning.docx",       # source document (.txt, .md, .pdf, .docx)
+    "output_path": "data/test_questions.json",     # generated questions JSON
+    # ── ChromaDB ──
+    "chroma_dir": "data/chroma_db",                # persistent ChromaDB directory
+    "collection_name": "chunks",                   # collection name inside ChromaDB
+    # ── LLM ──
+    "model_id": "deepseek-v4-pro",                 # LLM model identifier
+    "temperature": 0,                            # generation temperature (0.0–2.0)
+    "max_tokens": 1000000,                            # max output tokens per LLM call
+    # ── Question Generation ──
+    "question_count": 5,                           # number of questions to generate
+    "unanswerable_ratio": 0.4,                     # fraction of unanswerable questions (0.0–1.0)
+    # ── Chunk Filtering ──
+    "min_length": 100,                             # minimum character length for valid chunks
+}
+# ──────────────────────────────────────────────────────────────────────
 
 VALID_QUESTION_TYPES = {
     "factual",
@@ -41,6 +65,13 @@ Rules:
 5. question_type must be one of: factual, inferential, definitional, comparative, causal.
 6. reference_contexts must be a non-empty JSON array of exact copied snippets from the reference document.
 7. Do not paraphrase reference_contexts. Copy the minimum source text needed to support the answer.
+8. Generate a mix of evidence scopes across repeated calls:
+   - Some questions should be answerable from one localized part of the document.
+   - Some questions should require combining evidence from two or more different parts of the document.
+9. When the question requires multiple pieces of evidence, include each required source snippet as a separate item in reference_contexts.
+10. For multi-evidence questions, prefer comparative, causal, or inferential questions that synthesize related ideas, contrasts, causes, consequences, trade-offs, or timelines from different parts of the document.
+11. For single-evidence questions, prefer focused factual or definitional questions that can be fully supported by one concise source snippet.
+12. Do not force every question to be multi-evidence. Choose naturally between single-evidence and multi-evidence questions based on the document content and the previous questions.
 
 Return valid JSON only:
 {"question": "...", "ground_truth": "...", "reference_contexts": ["..."], "question_type": "..."}
@@ -64,25 +95,23 @@ FORBIDDEN_CONTEXT_MARKER_RE = re.compile(
 )
 
 
-def main() -> None:
-    model_id = "deepseek-v4-pro"
-    question_count = 5
-    max_tokens = 8192
-    input_path = "data/deep_learning.txt"
-    chroma_dir = "data/chroma_db"
-    collection_name = "chunks"
-    output_path = "data/test_questions.json"
-    min_length = 100
-    group_size = 3
-    min_gold_chunks = 1
-    unanswerable_ratio = 0.4
-    temperature = 0.7
-    _ = (group_size, min_gold_chunks)
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
+    model_id = args.model_id
+    question_count = args.question_count
+    max_tokens = args.max_tokens
+    input_path = args.input_path
+    chroma_dir = args.chroma_dir
+    collection_name = args.collection_name
+    output_path = args.output_path
+    min_length = args.min_length
+    unanswerable_ratio = args.unanswerable_ratio
+    temperature = args.temperature
     settings = get_settings()
 
     document_text = read_document(input_path)
     collection = open_chroma_collection(chroma_dir, collection_name)
-    chunks = fetch_chunks(collection, min_length)
+    chunks = fetch_chunks(collection, min_length, source_filename=Path(input_path).name)
     if not chunks:
         raise RuntimeError("No valid chunks found.")
 
@@ -147,8 +176,31 @@ def main() -> None:
     print(f"[INFO] generated={len(results)} skipped={skipped} output={output.resolve()}")
 
 
+def parse_args(argv: list[str] | None = None) -> Namespace:
+    cfg = DEFAULT_CONFIG
+    parser = ArgumentParser(description="Generate RAG evaluation questions from an indexed document.")
+    parser.add_argument(
+        "--input-path",
+        default=cfg["input_path"],
+        help="Source document path. Supports .txt, .md, .pdf, and .docx.",
+    )
+    parser.add_argument("--output-path", default=cfg["output_path"])
+    parser.add_argument("--chroma-dir", default=cfg["chroma_dir"])
+    parser.add_argument("--collection-name", default=cfg["collection_name"])
+    parser.add_argument("--model-id", default=cfg["model_id"])
+    parser.add_argument("--question-count", type=int, default=cfg["question_count"])
+    parser.add_argument("--max-tokens", type=int, default=cfg["max_tokens"])
+    parser.add_argument("--min-length", type=int, default=cfg["min_length"])
+    parser.add_argument("--unanswerable-ratio", type=float, default=cfg["unanswerable_ratio"])
+    parser.add_argument("--temperature", type=float, default=cfg["temperature"])
+    return parser.parse_args(argv)
+
+
 def read_document(path: str) -> str:
-    text = Path(path).read_text(encoding="utf-8").strip()
+    from src.ingestion.document_loader import DocumentLoader
+
+    document = DocumentLoader().load(path)
+    text = document.text.strip()
     if not text:
         raise RuntimeError(f"Document is empty: {path}")
     return text
@@ -162,7 +214,11 @@ def open_chroma_collection(persist_dir: str, collection_name: str) -> chromadb.C
     return client.get_collection(collection_name)
 
 
-def fetch_chunks(collection: chromadb.Collection, min_length: int) -> list[dict[str, Any]]:
+def fetch_chunks(
+    collection: chromadb.Collection,
+    min_length: int,
+    source_filename: str | None = None,
+) -> list[dict[str, Any]]:
     result = collection.get(include=["documents", "metadatas"])
 
     chunks = []
@@ -173,70 +229,24 @@ def fetch_chunks(collection: chromadb.Collection, min_length: int) -> list[dict[
     ):
         text = (text or "").strip()
         metadata = metadata or {}
+        if source_filename and not chunk_matches_source(metadata, source_filename):
+            continue
         if len(text) >= min_length:
             chunks.append({"chunk_id": chunk_id, "text": text, "metadata": metadata})
     return chunks
 
 
-def build_context_groups(chunks: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
-    by_source: dict[str, list[dict[str, Any]]] = {}
-    for chunk in dedupe_chunks_by_id(chunks):
-        metadata = chunk.get("metadata") or {}
-        source = str(
-            metadata.get("filename")
-            or metadata.get("source")
-            or metadata.get("doc_id")
-            or "unknown"
-        )
-        by_source.setdefault(source, []).append(chunk)
-
-    groups = []
-    for source_chunks in by_source.values():
-        source_chunks.sort(key=chunk_sort_key)
-        if source_chunks:
-            groups.append(source_chunks)
-    return groups
-
-
-def dedupe_chunks_by_id(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    seen = set()
-    unique = []
-    for chunk in chunks:
-        chunk_id = chunk.get("chunk_id")
-        if chunk_id in seen:
-            continue
-        seen.add(chunk_id)
-        unique.append(chunk)
-    return unique
-
-
-def sample_context_groups(
-    groups: list[list[dict[str, Any]]],
-    question_count: int,
-    min_gold_chunks: int,
-    max_gold_chunks: int,
-) -> list[list[dict[str, Any]]]:
-    eligible = [group for group in groups if len(group) >= min_gold_chunks]
-    if not eligible:
-        raise RuntimeError(f"No context groups have at least {min_gold_chunks} chunks.")
-
-    sample = []
-    for _ in range(question_count):
-        source_chunks = random.choice(eligible)
-        gold_count = random.randint(min_gold_chunks, min(max_gold_chunks, len(source_chunks)))
-        selected = random.sample(source_chunks, gold_count)
-        selected.sort(key=chunk_sort_key)
-        sample.append(selected)
-    return sample
-
-
-def chunk_sort_key(chunk: dict[str, Any]) -> tuple[int, int, str]:
-    metadata = chunk.get("metadata") or {}
-    return (
-        int(metadata.get("start_idx") or metadata.get("start_char") or 0),
-        int(metadata.get("end_idx") or metadata.get("end_char") or 0),
-        str(chunk.get("chunk_id") or ""),
-    )
+def chunk_matches_source(metadata: dict[str, Any], source_filename: str) -> bool:
+    target = Path(source_filename).name
+    for key in ("filename", "file_name", "document_name", "source_file", "source_filename"):
+        value = metadata.get(key)
+        if isinstance(value, str) and Path(value).name == target:
+            return True
+    for key in ("file_path", "path", "source_path", "source", "filepath"):
+        value = metadata.get(key)
+        if isinstance(value, str) and Path(value).name == target:
+            return True
+    return False
 
 
 def generate_answerable(
@@ -306,10 +316,6 @@ def call_json_llm(llm: ChatOpenAI, system_prompt: str, user_text: str) -> dict[s
     except Exception as exc:
         print(f"LLM/JSON error: {exc}")
         return None
-
-
-def format_group(group: list[dict[str, Any]]) -> str:
-    return "\n\n---\n\n".join(chunk["text"] for chunk in group)
 
 
 def format_document(document_text: str, previous: list[str] | None = None) -> str:

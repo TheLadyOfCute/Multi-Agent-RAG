@@ -491,8 +491,9 @@ class CompleteAgenticRAGWorkflow:
             initial_state = AgentState(query=query)
 
             # 设置知识库总文档数，供 validator 评估多样性
-            if self.vector_store and hasattr(self.vector_store, "count_documents"):
-                initial_state.total_docs = self.vector_store.count_documents()
+            vector_store = getattr(self, "vector_store", None)
+            if vector_store and hasattr(vector_store, "count_documents"):
+                initial_state.total_docs = vector_store.count_documents()
 
             raw_result = self.workflow.invoke(initial_state)
             result = self._normalize_workflow_result(raw_result)

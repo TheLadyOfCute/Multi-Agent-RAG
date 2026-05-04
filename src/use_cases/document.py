@@ -10,12 +10,22 @@ from typing import Any, BinaryIO
 from src.server.utils.paths import BM25_INDEX_PATH, UPLOAD_DIR
 from src.server.utils.state import RuntimeState
 from src.cache.redis_cache import RedisCacheService
-from src.graph.neo4j_helpers import get_neo4j_stats, open_neo4j_store, refresh_neo4j_stats_best_effort
+from src.graph.neo4j_helpers import (
+    close_neo4j_store,
+    get_neo4j_stats,
+    open_neo4j_store,
+    refresh_neo4j_stats_best_effort,
+)
 from src.storage.factory import close_vector_store, open_vector_store
 from src.utils.logger import setup_logger
-from src.retrieval.bm25_index import BM25Index
 
 logger = setup_logger("document_use_cases")
+
+
+def open_bm25_index(index_path: str):
+    from src.retrieval.bm25_index import BM25Index
+
+    return BM25Index(index_path=index_path)
 
 
 class RestoreDocumentStateUseCase:
@@ -371,6 +381,12 @@ class DeleteDocumentUseCase:
         file_deleted = False
         vector_chunks_deleted = False
         deleted_chunks_count = 0
+        chunk_ids: list[str] = []
+        graph_chunks_deleted = False
+        graph_available = False
+        bm25_rebuilt = False
+        bm25_deleted = False
+        remaining_chunks: int | None = None
         if removed:
             doc_path = removed.get("path") or ""
             if doc_path and os.path.exists(doc_path):
@@ -380,15 +396,22 @@ class DeleteDocumentUseCase:
             vector_store = None
             try:
                 vector_store = open_vector_store()
+                chunk_ids = vector_store.get_document_chunk_ids(decoded)
                 deleted_chunks_count = vector_store.delete_document_chunks(decoded)
                 vector_chunks_deleted = deleted_chunks_count > 0
-                bm25 = BM25Index(index_path=str(BM25_INDEX_PATH))
-                bm25.build_from_vector_store(vector_store)
-                bm25.save()
+                remaining_chunks = vector_store.get_stats()["total_chunks"]
+                bm25_rebuilt, bm25_deleted = self._refresh_bm25_after_delete(vector_store, remaining_chunks)
             except Exception as exc:
                 logger.warning(f"Delete vector chunks/BM25 refresh failed for '{decoded}': {exc}")
             finally:
                 close_vector_store(vector_store)
+
+            graph_chunks_deleted, graph_available = self._delete_graph_chunks_best_effort(chunk_ids, decoded)
+            refresh_neo4j_stats_best_effort(self.runtime_state)
+
+            with self.runtime_state.lock:
+                if not self.runtime_state.documents or remaining_chunks == 0:
+                    self.runtime_state.rag_initialized = False
 
             self.cache_service.clear_answer_cache()
 
@@ -397,7 +420,40 @@ class DeleteDocumentUseCase:
             "file_deleted": file_deleted,
             "vector_chunks_deleted": vector_chunks_deleted,
             "vector_chunks_count": deleted_chunks_count,
+            "graph_chunks_deleted": graph_chunks_deleted,
+            "graph_available": graph_available,
+            "bm25_rebuilt": bm25_rebuilt,
+            "bm25_deleted": bm25_deleted,
         }
+
+    @staticmethod
+    def _refresh_bm25_after_delete(vector_store: Any, remaining_chunks: int) -> tuple[bool, bool]:
+        if remaining_chunks <= 0:
+            if BM25_INDEX_PATH.exists():
+                BM25_INDEX_PATH.unlink()
+                return False, True
+            return False, False
+
+        bm25 = open_bm25_index(index_path=str(BM25_INDEX_PATH))
+        bm25.build_from_vector_store(vector_store)
+        bm25.save()
+        return True, False
+
+    @staticmethod
+    def _delete_graph_chunks_best_effort(chunk_ids: list[str], filename: str) -> tuple[bool, bool]:
+        if not chunk_ids:
+            return False, False
+
+        graph_store = None
+        try:
+            graph_store = open_neo4j_store()
+            graph_store.delete_chunks(chunk_ids)
+            return True, True
+        except Exception as exc:
+            logger.warning(f"Delete graph chunks failed for '{filename}': {exc}")
+            return False, False
+        finally:
+            close_neo4j_store(graph_store)
 
 
 class ClearAllDataUseCase:

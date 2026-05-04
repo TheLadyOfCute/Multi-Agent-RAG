@@ -64,7 +64,13 @@ def get_embedder():
             raise
         return _UnavailableEmbedder(exc)
 
-    return EmbeddingGenerator(cache_service=get_cache_service())
+    try:
+        return EmbeddingGenerator(cache_service=get_cache_service())
+    except Exception as exc:
+        cause = exc.__cause__
+        if isinstance(cause, ModuleNotFoundError) and cause.name == "openai":
+            return _UnavailableEmbedder(cause)
+        raise
 
 
 @lru_cache(maxsize=1)

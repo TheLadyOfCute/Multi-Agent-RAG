@@ -170,3 +170,60 @@ def test_forbidden_context_markers_are_detected():
     assert script.has_forbidden_context_marker("The concept from chunk 1 is representation learning.")
     assert script.has_forbidden_context_marker("Use flat_c06dbe64e5924f6f391bcf833e3b934e_4.")
     assert not script.has_forbidden_context_marker("Why does fine-tuning reduce deployment cost?")
+
+
+def test_parse_args_accepts_pdf_docx_input_path():
+    script = load_script()
+
+    pdf_args = script.parse_args(["--input-path", "data/example.pdf"])
+    docx_args = script.parse_args(["--input-path", "data/example.docx"])
+
+    assert pdf_args.input_path == "data/example.pdf"
+    assert docx_args.input_path == "data/example.docx"
+
+
+def test_read_document_uses_document_loader_for_pdf_and_docx(monkeypatch):
+    script = load_script()
+    loaded_paths = []
+
+    class FakeDocument:
+        text = " Extracted document text. "
+
+    class FakeDocumentLoader:
+        def load(self, path):
+            loaded_paths.append(path)
+            return FakeDocument()
+
+    fake_loader_module = types.SimpleNamespace(DocumentLoader=FakeDocumentLoader)
+    monkeypatch.setitem(sys.modules, "src.ingestion.document_loader", fake_loader_module)
+
+    assert script.read_document("upload.pdf") == "Extracted document text."
+    assert script.read_document("upload.docx") == "Extracted document text."
+    assert loaded_paths == ["upload.pdf", "upload.docx"]
+
+
+def test_fetch_chunks_filters_to_uploaded_filename():
+    script = load_script()
+
+    class FakeCollection:
+        def get(self, include):
+            assert include == ["documents", "metadatas"]
+            return {
+                "ids": ["c1", "c2", "c3"],
+                "documents": [
+                    "A" * 120,
+                    "B" * 120,
+                    "too short",
+                ],
+                "metadatas": [
+                    {"filename": "paper.pdf"},
+                    {"file_path": "data/uploads/other.docx"},
+                    {"filename": "paper.pdf"},
+                ],
+            }
+
+    chunks = script.fetch_chunks(FakeCollection(), min_length=100, source_filename="paper.pdf")
+
+    assert chunks == [
+        {"chunk_id": "c1", "text": "A" * 120, "metadata": {"filename": "paper.pdf"}},
+    ]

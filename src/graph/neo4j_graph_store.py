@@ -189,6 +189,67 @@ class Neo4jGraphStore:
             )
 
 
+    # 删除指定 chunk 的图谱证据，同时保留仍被其它 chunk 引用的共享实体/关系。
+    def delete_chunks(self, chunk_ids: List[str]) -> Dict[str, int]:
+        """Remove chunk evidence and prune graph items no longer referenced."""
+        chunk_ids = list(dict.fromkeys(chunk_id for chunk_id in chunk_ids if chunk_id))
+        if not chunk_ids:
+            return {
+                "chunks": 0,
+                "relationships_deleted": 0,
+                "entities_deleted": 0,
+            }
+
+        with self.driver.session() as session:
+            session.run(
+                """
+                MATCH (e:Entity)
+                WHERE any(chunk_id IN $chunk_ids WHERE chunk_id IN coalesce(e.chunk_ids, []))
+                SET e.chunk_ids = [chunk_id IN coalesce(e.chunk_ids, []) WHERE NOT chunk_id IN $chunk_ids]
+                """,
+                chunk_ids=chunk_ids,
+            ).consume()
+
+            session.run(
+                """
+                MATCH ()-[r:RELATED_TO]->()
+                WHERE any(chunk_id IN $chunk_ids WHERE chunk_id IN coalesce(r.chunk_ids, []))
+                SET r.chunk_ids = [chunk_id IN coalesce(r.chunk_ids, []) WHERE NOT chunk_id IN $chunk_ids],
+                    r.evidence_json = [
+                        evidence IN coalesce(r.evidence_json, [])
+                        WHERE none(
+                            chunk_id IN $chunk_ids
+                            WHERE evidence CONTAINS ('"chunk_id": "' + chunk_id + '"')
+                               OR evidence CONTAINS ('"chunk_id":"' + chunk_id + '"')
+                        )
+                    ]
+                """,
+                chunk_ids=chunk_ids,
+            ).consume()
+
+            rel_summary = session.run(
+                """
+                MATCH ()-[r:RELATED_TO]->()
+                WHERE size(coalesce(r.chunk_ids, [])) = 0
+                DELETE r
+                """,
+            ).consume()
+
+            entity_summary = session.run(
+                """
+                MATCH (e:Entity)
+                WHERE size(coalesce(e.chunk_ids, [])) = 0
+                  AND NOT (e)--()
+                DELETE e
+                """,
+            ).consume()
+
+        return {
+            "chunks": len(chunk_ids),
+            "relationships_deleted": rel_summary.counters.relationships_deleted,
+            "entities_deleted": entity_summary.counters.nodes_deleted,
+        }
+
     # 匹配输入实体中已存在于 Neo4j 的实体名称
     def match_entities(self, entities: List[str]) -> List[str]:
         """Return extracted entity names that exist in Neo4j, preserving input order."""

@@ -1,35 +1,46 @@
 [
   {
     "id": "q001",
-    "question": "How do I fine-tune a BERT model specifically for detecting sarcasm in tweets using Hugging Face Transformers?",
-    "ground_truth": "unanswerable",
-    "reference_contexts": [],
-    "gold_chunk_ids": [],
-    "question_type": "unanswerable"
+    "question": "What is the difference between the universal approximation theorem for classic shallow networks and the theorem for deep neural networks with bounded width?",
+    "ground_truth": "The classic universal approximation theorem concerns the capacity of feedforward neural networks with a single hidden layer of finite size to approximate continuous functions. In contrast, the universal approximation theorem for deep neural networks concerns the capacity of networks with bounded width but where the depth is allowed to grow. Specifically, if the width of a deep neural network with ReLU activation is strictly larger than the input dimension, then the network can approximate any Lebesgue integrable function; if the width is smaller or equal to the input dimension, then a deep neural network is not a universal approximator.",
+    "reference_contexts": [
+      "The classic universal approximation theorem concerns the capacity of feedforward neural networks with a single hidden layer of finite size to approximate continuous functions.",
+      "The universal approximation theorem for deep neural networks concerns the capacity of networks with bounded width but the depth is allowed to grow. Lu et al. proved that if the width of a deep neural network with ReLU activation is strictly larger than the input dimension, then the network can approximate any Lebesgue integrable function; if the width is smaller or equal to the input dimension, then a deep neural network is not a universal approximator."
+    ],
+    "gold_chunk_ids": [
+      "flat_2bc7b78fc53a717862459d114442cfb6_1"
+    ],
+    "question_type": "comparative"
   },
   {
     "id": "q002",
-    "question": "What is backpropagation and why is it16 important in deep learning?",
-    "ground_truth": "Backpropagation is one of the most important algorithms in deep learning. It applies the chain rule of calculus to compute gradients of the loss with respect to every learnable parameter in the network. Once the gradients are known, an optimization algorithm updates the parameters to reduce future error.",
+    "question": "What hardware innovation was crucial for the deep learning revolution, and what early demonstration in 2009 showed its potential?",
+    "ground_truth": "The GPU (graphics processing unit) was a crucial hardware advance for the deep learning revolution. An early demonstration occurred in 2009 when Raina, Madhavan, and Andrew Ng reported training a 100M deep belief network on 30 Nvidia GeForce GTX 280 GPUs, achieving up to 70 times faster training.",
     "reference_contexts": [
-      "Backpropagation is one of the most important algorithms in deep learning. It applies the chain rule of calculus to compute gradients of the loss with respect to every learnable parameter in the network. Once the gradients are known, an optimization algorithm updates the parameters to reduce future error."
+      "A key advance for the deep learning revolution was hardware advances, especially GPU. Some early work dated back to 2004. In 2009, Raina, Madhavan, and Andrew Ng reported a 100M deep belief network trained on 30 Nvidia GeForce GTX 280 GPUs, an early demonstration of GPU-based deep learning. They reported up to 70 times faster training."
     ],
     "gold_chunk_ids": [
-      "flat_c06dbe64e5924f6f391bcf833e3b934e_0"
+      "flat_2bc7b78fc53a717862459d114442cfb6_5",
+      "flat_2bc7b78fc53a717862459d114442cfb6_6"
     ],
-    "question_type": "definitional"
+    "question_type": "factual"
   },
   {
     "id": "q003",
-    "question": "What are the05 key differences between Graph Neural Networks and Transformers for molecular property prediction?",
-    "ground_truth": "unanswerable",
-    "reference_contexts": [],
-    "gold_chunk_ids": [],
-    "question_type": "unanswerable"
+    "question": "How did the development of LSTM address the vanishing gradient problem, and what earlier work by Hochreiter directly contributed to its creation?",
+    "ground_truth": "The vanishing gradient problem was identified and analyzed by Sepp Hochreiter in his 1991 diploma thesis, which also implemented the neural history compressor. To solve this problem, Hochreiter proposed recurrent residual connections. This work led directly to the long short-term memory (LSTM) architecture, published in 1995, which can learn tasks requiring memories of events that happened thousands of discrete time steps before. The modern LSTM architecture was later completed with the addition of a forget gate in 1999.",
+    "reference_contexts": [
+      "Sepp Hochreiter's diploma thesis (1991) implemented the neural history compressor, and identified and analyzed the vanishing gradient problem. Hochreiter proposed recurrent residual connections to solve the vanishing gradient problem. This led to the long short-term memory (LSTM), published in 1995.",
+      "LSTM can learn 'very deep learning' tasks with long credit assignment paths that require memories of events that happened thousands of discrete time steps before. That LSTM was not yet the modern architecture, which required a 'forget gate', introduced in 1999, which became the standard RNN architecture."
+    ],
+    "gold_chunk_ids": [
+      "flat_2bc7b78fc53a717862459d114442cfb6_3"
+    ],
+    "question_type": "causal"
   },
   {
     "id": "q004",
-    "question": "What specific hyperparameter settings and data preprocessing steps are used to train a Vision Transformer from scratch on the CIFAR-100 dataset?",
+    "question": "How does the choice of optimizer, such as AdamW versus SGD with momentum, affect the generalization gap in large-scale transformer models trained on multilingual datasets?",
     "ground_truth": "unanswerable",
     "reference_contexts": [],
     "gold_chunk_ids": [],
@@ -37,14 +48,10 @@
   },
   {
     "id": "q005",
-    "question": "What is the role of self-attention in the transformer architecture, and why does it make transformers more parallelizable than recurrent neural networks?",
-    "ground_truth": "Self-attention allows a token to attend to other tokens in the sequence, making it easier to capture long-distance dependencies. Unlike recurrent models that process tokens strictly one by one, transformers rely on attention mechanisms to model relationships between tokens more flexibly, and this architecture is highly parallelizable.",
-    "reference_contexts": [
-      "Instead of processing tokens strictly one by one like a recurrent model, transformers rely on attention mechanisms to model relationships between tokens more flexibly. Self-attention allows a token to attend to other tokens in the sequence, making it easier to capture long-distance dependencies. This architecture is highly parallelizable, which made it attractive for large-scale training."
-    ],
-    "gold_chunk_ids": [
-      "flat_c06dbe64e5924f6f391bcf833e3b934e_1"
-    ],
-    "question_type": "causal"
+    "question": "How does the spectral bias of neural networks influence their ability to learn high-frequency functions in the context of solving partial differential equations?",
+    "ground_truth": "unanswerable",
+    "reference_contexts": [],
+    "gold_chunk_ids": [],
+    "question_type": "unanswerable"
   }
 ]

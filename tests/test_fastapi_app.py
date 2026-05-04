@@ -11,11 +11,16 @@ sys.path.insert(0, str(ROOT))
 
 def test_health_and_initial_state(monkeypatch) -> None:
     from src.server import main
-    from src.server.dependencies import get_restore_document_state_use_case, get_runtime_state
+    from src.server.dependencies import (
+        get_restore_document_state_use_case,
+        get_runtime_state,
+        get_system_state_use_case,
+    )
 
     state = get_runtime_state()
     state.reset_runtime()
     monkeypatch.setattr(get_restore_document_state_use_case(), "restore_persisted_state", lambda: None)
+    monkeypatch.setattr(get_system_state_use_case().ensure_loaded_use_case, "execute", lambda: None)
 
     with TestClient(main.app) as client:
         assert client.get("/api/health").json() == {"status": "ok"}
