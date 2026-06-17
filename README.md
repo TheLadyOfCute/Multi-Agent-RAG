@@ -290,21 +290,6 @@ docker compose down -v
 docker compose up -d
 ```
 
-默认端口：
-
-```text
-Neo4j HTTP: 7474
-Neo4j Bolt: 7687
-Redis: 6379
-```
-
-默认连接信息：
-
-```text
-Neo4j: neo4j / multirag_neo4j
-Redis: redis://localhost:6379
-```
-
 ### 3. 启动后端
 
 推荐：
