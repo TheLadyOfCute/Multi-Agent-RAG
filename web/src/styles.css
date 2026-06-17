@@ -375,8 +375,8 @@ h1 {
 
 .chat-panel {
   display: grid;
-  grid-template-rows: auto auto;
-  align-content: start;
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-content: stretch;
   gap: 16px;
 }
 
@@ -386,11 +386,11 @@ h1 {
   flex-direction: column;
   gap: 24px;
   padding-right: 4px;
-  max-height: calc(100vh - 360px);
+  min-height: 0;
 }
 
 .empty-chat {
-  min-height: 360px;
+  min-height: 0;
   display: grid;
   place-items: center;
   align-content: center;

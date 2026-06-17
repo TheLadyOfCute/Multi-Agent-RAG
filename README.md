@@ -14,7 +14,7 @@
 
 | 层级 | 技术 | 作用 |
 | --- | --- | --- |
-| 前端 | Vue 3 + Vite + TypeScript + lucide-vue-next | Web 交互界面，负责文档上传、对话、引用展开、评估、统计和性能查看 |
+| 前端 | Vue 3 + Vite + TypeScript | Web 交互界面，负责文档上传、对话、引用展开、评估、统计和性能查看 |
 | 后端 API | FastAPI + Uvicorn | 提供 HTTP 接口，承接前端请求 |
 | 配置管理 | Pydantic Settings + `.env` | 统一读取模型、Neo4j、Redis、Chroma、路径和运行参数 |
 | LLM | DashScope OpenAI-compatible API，默认 `qwen3.6-plus` | Agent 规划、验证、写作、批判和评估辅助 |

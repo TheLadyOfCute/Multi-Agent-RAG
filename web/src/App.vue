@@ -381,11 +381,11 @@ onMounted(async () => {
       <section class="sidebar-section">
         <div class="section-title">
           <Sparkles :size="16" />
-          <span>示例问题</span>
+          <span>Example Questions</span>
         </div>
-        <button class="sample" @click="askQuestion('这篇文档的核心观点是什么？')">这篇文档的核心观点是什么？</button>
-        <button class="sample" @click="askQuestion('请总结文档中的关键技术点？')">请总结文档中的关键技术点？</button>
-        <button class="sample" @click="askQuestion('文档中有哪些值得注意的风险？')">文档中有哪些值得注意的风险？</button>
+        <button class="sample" @click="askQuestion('What is the main idea of this document?')">What is the main idea of this document?</button>
+        <button class="sample" @click="askQuestion('Summarize the key technical points in this document.')">Summarize the key technical points in this document.</button>
+        <button class="sample" @click="askQuestion('What risks or limitations should I pay attention to?')">What risks or limitations should I pay attention to?</button>
       </section>
 
       <div class="sidebar-actions">
