@@ -38,10 +38,4 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Runtime data and generated artifacts
-data/chroma_db/
-data/bm25_index.pkl
-data/rag_outputs.jsonl
-data/test_questions.json
-data/evaluations/
-outputs/
+
