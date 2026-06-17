@@ -31,6 +31,7 @@ def create_full_rag_workflow(
         model=settings.llm_model,
         api_key=settings.dashscope_api_key,
         base_url=settings.dashscope_base_url,
+        extra_body={"enable_thinking": False},
     )
 
     vector_agent = VectorSearchAgent(vector_store=vector_store, embedder=embedder)

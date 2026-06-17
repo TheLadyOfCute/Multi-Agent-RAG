@@ -243,6 +243,7 @@ class ProcessUploadedDocumentUseCase:
                 temperature=0.0,
                 api_key=settings.dashscope_api_key,
                 base_url=settings.dashscope_base_url,
+                extra_body={"enable_thinking": False},
             )
             return ChunkingAdvisorAgent(llm=llm).advise(text)
         except Exception as exc:

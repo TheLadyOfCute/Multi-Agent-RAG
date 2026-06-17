@@ -51,7 +51,8 @@ class CriticAgent(BaseAgent):
                 temperature=0.0,  # Deterministic for consistency
                 max_tokens=2000,
                 api_key=settings.dashscope_api_key,
-                base_url=settings.dashscope_base_url
+                base_url=settings.dashscope_base_url,
+                extra_body={"enable_thinking": False},
             )
         else:
             self.llm = llm

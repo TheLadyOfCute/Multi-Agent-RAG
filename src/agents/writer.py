@@ -33,6 +33,7 @@ class WriterAgent(BaseAgent):
                 max_tokens=max_tokens or settings.llm_max_tokens,
                 api_key=settings.dashscope_api_key,
                 base_url=settings.dashscope_base_url,
+                extra_body={"enable_thinking": False},
             )
         else:
             self.llm = llm
