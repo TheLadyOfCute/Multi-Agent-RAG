@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     # ===== Agent Configuration =====
     validator_threshold: float = Field(default=0.7, description="Validation sufficiency threshold", ge=0.0, le=1.0)
     validator_max_retries: int = Field(default=2, description="Maximum retrieval retry attempts", ge=0)
+    critic_threshold: float = Field(default=0.7, description="Critic quality approval threshold", ge=0.0, le=1.0)
     critic_max_iterations: int = Field(default=2, description="Maximum critic regeneration iterations", ge=1)
     
     # ===== Cache Configuration =====
