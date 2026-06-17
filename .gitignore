@@ -1,4 +1,47 @@
+# Environment and local secrets
 .env
-.vscode
-*_pycache__
-*__pycache__
+.env.*
+!.env.example
+
+# Editors and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# Logs
+*.log
+logs/
+
+# Frontend dependencies, caches, and build output
+node_modules/
+web/node_modules/
+web/.vite/
+web/dist/
+web/tsconfig.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime data and generated artifacts
+data/chroma_db/
+data/bm25_index.pkl
+data/rag_outputs.jsonl
+data/test_questions.json
+data/evaluations/
+outputs/
