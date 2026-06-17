@@ -1,713 +1,629 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, ref } from 'vue'
 import {
   Activity,
   BarChart3,
   Bot,
-  BrainCircuit,
   Database,
   Download,
-  FileJson,
   FileText,
-  Loader2,
+  Gauge,
   MessageSquare,
-  RefreshCcw,
-  Search,
+  RefreshCw,
   Send,
-  ShieldAlert,
   Sparkles,
   Trash2,
-  UploadCloud,
-  Workflow,
+  Upload,
   X
-} from "lucide-vue-next";
-import type {
-  ChatMessage,
-  DocumentRecord,
-  PerformanceStats,
-  PreviewDocument,
-  RagasResult,
-  SystemState,
-  TaskState,
-  TestQuestion
-} from "./api/client";
-import { api } from "./api/client";
+} from 'lucide-vue-next'
+import { api, type AppState, type ChatMessage, type DocumentRecord, type EvaluationQuestion, type EvaluationResult, type EvaluationScore, type TaskStatus } from './api/client'
 
-type TaskKind = "upload" | "chat" | "ragas";
+const tabs = [
+  { key: 'chat', label: '对话', icon: MessageSquare },
+  { key: 'evaluation', label: '评估', icon: BarChart3 },
+  { key: 'stats', label: '统计', icon: Database },
+  { key: 'performance', label: '性能', icon: Gauge }
+] as const
 
-const health = ref<"checking" | "ok" | "down">("checking");
-const state = ref<SystemState | null>(null);
-const documents = ref<DocumentRecord[]>([]);
-const messages = ref<ChatMessage[]>([]);
-const preview = ref<PreviewDocument | null>(null);
-const previewOpen = ref(false);
-const questions = ref<TestQuestion[]>([]);
-const testFile = ref("data/test_questions.json");
-const ragasResult = ref<RagasResult | null>(null);
-const query = ref("");
-const notice = ref("");
-const errorMessage = ref("");
-const reuseRagOutputs = ref(false);
-const confirmClearData = ref(false);
-const expandedCitations = ref<Record<number, boolean>>({});
-const deletingName = ref("");
+const activeTab = ref<(typeof tabs)[number]['key']>('chat')
+const appState = ref<AppState | null>(null)
+const documents = ref<DocumentRecord[]>([])
+const messages = ref<ChatMessage[]>([])
+const questions = ref<EvaluationQuestion[]>([])
+const query = ref('')
+const busy = ref(false)
+const graphRefreshing = ref(false)
+const clearingData = ref(false)
+const notice = ref('')
+const error = ref('')
+const uploadTask = ref<TaskStatus | null>(null)
+const evalTask = ref<TaskStatus | null>(null)
+const chatTask = ref<TaskStatus | null>(null)
+const evaluationResult = ref<EvaluationResult | null>(null)
+const testFile = ref('data/test_questions.json')
+const reuseRagOutputs = ref(false)
+const selectedDocument = ref('')
+const preview = ref<{ text: string; chars: number; words: number } | null>(null)
+const openCitations = ref<Record<string, boolean>>({})
 
-const uploadTask = ref<TaskState | null>(null);
-const chatTask = ref<TaskState | null>(null);
-const ragasTask = ref<TaskState<RagasResult> | null>(null);
-const pollTimers = new Map<TaskKind, number>();
-let refreshTimer: number | undefined;
-
-const canAsk = computed(() => Boolean(state.value?.rag_initialized) && !isBusy(chatTask.value));
-const neo4jCounts = computed(() => state.value?.neo4j?.counts || {});
-const performance = computed<PerformanceStats>(() => state.value?.performance || {});
-const assistantCount = computed(() => messages.value.filter((item) => item.role === "assistant").length);
-const latestAssistant = computed(() => [...messages.value].reverse().find((item) => item.role === "assistant"));
-const summaryEntries = computed(() => Object.entries(ragasResult.value?.summary || {}).slice(0, 10));
-const scoreRows = computed(() => ragasResult.value?.scores?.slice(0, 8) || []);
-const scoreColumns = computed(() => {
-  const row = scoreRows.value[0];
-  return row ? Object.keys(row).slice(0, 7) : [];
-});
-
-onMounted(async () => {
-  await refreshAll();
-  refreshTimer = window.setInterval(() => {
-    void refreshState();
-  }, 8000);
-});
-
-onUnmounted(() => {
-  if (refreshTimer) {
-    window.clearInterval(refreshTimer);
+const totalChunks = computed(() => documents.value.reduce((sum, doc) => sum + Number(doc.chunks || 0), 0))
+const userQueries = computed(() => messages.value.filter((message) => message.role === 'user').length)
+const graphCounts = computed(() => appState.value?.neo4j.counts ?? { nodes: 0, edges: 0 })
+const perf = computed(() => appState.value?.performance ?? {})
+const uploadProgress = computed(() => Math.round((uploadTask.value?.progress ?? 0) * 100))
+const evalProgress = computed(() => Math.round((evalTask.value?.progress ?? 0) * 100))
+const chatProgress = computed(() => Math.max(4, Math.round((chatTask.value?.progress ?? 0) * 100)))
+const questionRows = computed(() => {
+  const scoreById = new Map<string, EvaluationScore>()
+  for (const score of evaluationResult.value?.scores ?? []) {
+    scoreById.set(score.id, score)
   }
-  for (const timer of pollTimers.values()) {
-    window.clearTimeout(timer);
+  return questions.value.map((question) => {
+    const score = scoreById.get(question.id)
+    return {
+      ...question,
+      retrieved_chunk_ids: score?.retrieved_chunk_ids ?? question.retrieved_chunk_ids ?? [],
+      gold_chunk_ids: score?.gold_chunk_ids ?? question.gold_chunk_ids ?? []
+    }
+  })
+})
+
+function setError(value: unknown) {
+  error.value = value instanceof Error ? value.message : String(value)
+}
+
+function citationKey(messageIndex: number, childId: string, sourceNumber: number) {
+  return `${messageIndex}:${childId || sourceNumber}`
+}
+
+function toggleCitation(messageIndex: number, childId: string, sourceNumber: number) {
+  const key = citationKey(messageIndex, childId, sourceNumber)
+  openCitations.value = {
+    ...openCitations.value,
+    [key]: !openCitations.value[key]
   }
-});
+}
 
 async function refreshAll() {
-  await Promise.allSettled([checkHealth(), refreshState(), refreshDocuments(), refreshMessages()]);
-}
-
-async function checkHealth() {
   try {
-    await api.health();
-    health.value = "ok";
-  } catch {
-    health.value = "down";
+    const [stateResult, docsResult, messagesResult] = await Promise.all([
+      api.state(),
+      api.documents(),
+      api.messages()
+    ])
+    appState.value = stateResult
+    documents.value = docsResult.documents
+    messages.value = messagesResult.messages
+    if (!selectedDocument.value && documents.value.length) {
+      selectedDocument.value = documents.value[0].name
+    }
+  } catch (err) {
+    setError(err)
   }
 }
 
-async function refreshState() {
+async function loadQuestions(path = testFile.value) {
   try {
-    state.value = await api.state();
-    errorMessage.value = "";
-  } catch (error) {
-    errorMessage.value = getError(error);
+    const result = await api.questions(path)
+    testFile.value = result.test_file
+    questions.value = result.questions
+  } catch (err) {
+    questions.value = []
+    setError(err)
   }
 }
 
-async function refreshDocuments() {
+async function onUploadDocument(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  error.value = ''
+  notice.value = `已提交：${file.name}`
   try {
-    documents.value = (await api.documents()).documents;
-  } catch (error) {
-    errorMessage.value = getError(error);
+    const result = await api.uploadDocument(file)
+    uploadTask.value = { task_id: result.task_id, status: 'pending' }
+    pollTask(result.task_id, 'upload')
+  } catch (err) {
+    setError(err)
+  } finally {
+    input.value = ''
   }
 }
 
-async function refreshMessages() {
+async function pollTask(taskId: string, kind: 'upload' | 'eval' | 'chat') {
+  while (true) {
+    const task = await api.task(taskId)
+    if (kind === 'upload') uploadTask.value = task
+    if (kind === 'eval') evalTask.value = task
+    if (kind === 'chat') chatTask.value = task
+
+    if (kind !== 'chat') {
+      await refreshAll()
+    }
+
+    if (task.status === 'done') {
+      if (kind === 'upload') notice.value = '文档处理完成'
+      if (kind === 'eval') {
+        notice.value = '评估完成'
+        evaluationResult.value = task.result as EvaluationResult
+      }
+      if (kind === 'chat') {
+        notice.value = '回答已生�?
+        busy.value = false
+        chatTask.value = null
+      }
+      if (kind === 'eval') activeTab.value = 'evaluation'
+      await refreshAll()
+      return
+    }
+
+    if (task.status === 'error' || task.status === 'not_found') {
+      error.value = task.error || '任务失败'
+      if (kind === 'chat') busy.value = false
+      return
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, kind === 'chat' ? 900 : 1800))
+  }
+}
+
+async function askQuestion(text?: string) {
+  const question = (text ?? query.value).trim()
+  if (!question || busy.value) return
+  error.value = ''
+  notice.value = '问题已提交，正在启动�?Agent 工作�?..'
+  busy.value = true
+  query.value = ''
+  messages.value.push({ role: 'user', content: question })
+  chatTask.value = {
+    task_id: 'local-pending',
+    status: 'pending',
+    progress: 0,
+    stage: 'submitting',
+    last_id: '正在提交问题'
+  }
   try {
-    messages.value = (await api.messages()).messages;
-  } catch (error) {
-    errorMessage.value = getError(error);
+    const result = await api.startChatTask(question)
+    chatTask.value = {
+      task_id: result.task_id,
+      status: 'pending',
+      progress: 0.02,
+      stage: 'queued',
+      last_id: '任务已进入队�?
+    }
+    pollTask(result.task_id, 'chat')
+  } catch (err) {
+    setError(err)
+    busy.value = false
+    chatTask.value = null
+    await refreshAll()
   }
 }
 
 async function refreshGraph() {
+  if (graphRefreshing.value) return
+  graphRefreshing.value = true
+  error.value = ''
+  notice.value = '正在刷新图数据库统计...'
   try {
-    await api.graphStats();
-    await refreshState();
-    notice.value = "Neo4j 图统计已刷新";
-  } catch (error) {
-    errorMessage.value = getError(error);
+    const result = await api.graphStats()
+    await refreshAll()
+    const nodes = result?.counts?.nodes ?? appState.value?.neo4j.counts.nodes ?? 0
+    const edges = result?.counts?.edges ?? appState.value?.neo4j.counts.edges ?? 0
+    notice.value = `图数据库已刷新：${nodes} 个节点，${edges} 条边`
+  } catch (err) {
+    setError(err)
+  } finally {
+    graphRefreshing.value = false
   }
 }
 
-async function refreshPerformance() {
+async function removeDocument(name: string) {
   try {
-    const nextPerformance = await api.performance();
-    state.value = state.value ? { ...state.value, performance: nextPerformance } : state.value;
-    notice.value = "性能指标已刷新";
-  } catch (error) {
-    errorMessage.value = getError(error);
+    const result = await api.deleteDocument(name)
+    notice.value = result.vector_chunks_deleted ? '文档已删�? : '文档记录已删除，向量数据未单独清�?
+    await refreshAll()
+  } catch (err) {
+    setError(err)
+  }
+}
+
+async function clearMessages() {
+  await api.clearMessages()
+  messages.value = []
+  await refreshAll()
+}
+
+async function clearData() {
+  if (clearingData.value) return
+  clearingData.value = true
+  error.value = ''
+  try {
+    await api.clearData()
+    uploadTask.value = null
+    evalTask.value = null
+    evaluationResult.value = null
+    chatTask.value = null
+    preview.value = null
+    selectedDocument.value = ''
+    notice.value = '所有数据已清空'
+    await refreshAll()
+  } catch (err) {
+    setError(err)
+  } finally {
+    clearingData.value = false
+  }
+}
+
+async function uploadQuestionFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  try {
+    const result = await api.uploadQuestions(file)
+    testFile.value = result.test_file
+    questions.value = result.questions
+    notice.value = `已加�?${result.questions.length} 个评估问题`
+  } catch (err) {
+    setError(err)
+  } finally {
+    input.value = ''
+  }
+}
+
+async function startEvaluation() {
+  try {
+    evaluationResult.value = null
+    const result = await api.startRagas(testFile.value, reuseRagOutputs.value)
+    evalTask.value = { task_id: result.task_id, status: 'pending' }
+    pollTask(result.task_id, 'eval')
+  } catch (err) {
+    setError(err)
+  }
+}
+
+async function loadPreview() {
+  if (!selectedDocument.value) return
+  try {
+    const result = await api.previewDocument(selectedDocument.value)
+    preview.value = result
+  } catch (err) {
+    setError(err)
   }
 }
 
 async function savePerformance() {
   try {
-    await api.savePerformance();
-    notice.value = "性能指标已保存到 data/metrics.json";
-  } catch (error) {
-    errorMessage.value = getError(error);
+    const result = await api.savePerformance()
+    notice.value = `指标已保存至 ${result.path}`
+    await refreshAll()
+  } catch (err) {
+    setError(err)
   }
 }
 
-async function onUploadDocument(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  input.value = "";
-  if (!file) return;
-
-  const extension = file.name.split(".").pop()?.toLowerCase();
-  if (!extension || !["pdf", "docx", "txt"].includes(extension)) {
-    errorMessage.value = "仅支持上传 pdf、docx、txt 文件";
-    return;
-  }
-
-  try {
-    const response = await api.uploadDocument(file);
-    notice.value = `已提交文档任务：${file.name}`;
-    pollTask("upload", response.task_id, uploadTask, async () => {
-      await Promise.all([refreshState(), refreshDocuments()]);
-    });
-  } catch (error) {
-    errorMessage.value = getError(error);
-  }
-}
-
-async function deleteDocument(name: string) {
-  if (deletingName.value !== name) {
-    deletingName.value = name;
-    return;
-  }
-
-  try {
-    await api.deleteDocument(name);
-    deletingName.value = "";
-    preview.value = null;
-    await Promise.all([refreshState(), refreshDocuments()]);
-    notice.value = `已删除 ${name}`;
-  } catch (error) {
-    errorMessage.value = getError(error);
-  }
-}
-
-async function openPreview(name: string) {
-  try {
-    preview.value = await api.previewDocument(name);
-    previewOpen.value = true;
-  } catch (error) {
-    errorMessage.value = getError(error);
-  }
-}
-
-async function clearAllData() {
-  if (!confirmClearData.value) {
-    confirmClearData.value = true;
-    return;
-  }
-
-  try {
-    await api.clearData();
-    confirmClearData.value = false;
-    preview.value = null;
-    ragasResult.value = null;
-    questions.value = [];
-    await refreshAll();
-    notice.value = "文档、索引、状态和任务记录已清空";
-  } catch (error) {
-    errorMessage.value = getError(error);
-  }
-}
-
-async function sendQuestion() {
-  const text = query.value.trim();
-  if (!text || !canAsk.value) return;
-
-  query.value = "";
-  try {
-    const response = await api.createChatTask(text);
-    await refreshMessages();
-    pollTask("chat", response.task_id, chatTask, async () => {
-      expandedCitations.value = {};
-      await Promise.all([refreshState(), refreshMessages()]);
-    });
-  } catch (error) {
-    errorMessage.value = getError(error);
-  }
-}
-
-async function clearChat() {
-  try {
-    await api.clearMessages();
-    messages.value = [];
-    await refreshState();
-    notice.value = "对话已清空";
-  } catch (error) {
-    errorMessage.value = getError(error);
-  }
-}
-
-async function exportChat() {
-  try {
-    const content = await api.exportChat();
-    downloadText("multi-agent-rag-chat.txt", content);
-  } catch (error) {
-    errorMessage.value = getError(error);
-  }
-}
-
-async function loadQuestions() {
-  try {
-    const response = await api.evaluationQuestions(testFile.value);
-    testFile.value = response.test_file;
-    questions.value = response.questions;
-    notice.value = `已加载 ${response.questions.length} 个测试问题`;
-  } catch (error) {
-    errorMessage.value = getError(error);
-  }
-}
-
-async function onUploadQuestions(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  input.value = "";
-  if (!file) return;
-
-  if (!file.name.toLowerCase().endsWith(".json")) {
-    errorMessage.value = "测试问题文件必须是 JSON";
-    return;
-  }
-
-  try {
-    const response = await api.uploadEvaluationQuestions(file);
-    testFile.value = response.test_file;
-    questions.value = response.questions;
-    notice.value = `已上传 ${response.questions.length} 个测试问题`;
-  } catch (error) {
-    errorMessage.value = getError(error);
-  }
-}
-
-async function startRagas() {
-  try {
-    const response = await api.startRagas(testFile.value, reuseRagOutputs.value);
-    ragasResult.value = null;
-    pollTask<RagasResult>("ragas", response.task_id, ragasTask, async (task) => {
-      ragasResult.value = task.result || null;
-      await refreshState();
-    });
-  } catch (error) {
-    errorMessage.value = getError(error);
-  }
-}
-
-function pollTask<T>(
-  kind: TaskKind,
-  taskId: string,
-  target: { value: TaskState<T> | null },
-  onDone: (task: TaskState<T>) => Promise<void>
-) {
-  const existingTimer = pollTimers.get(kind);
-  if (existingTimer) {
-    window.clearTimeout(existingTimer);
-  }
-
-  const poll = async () => {
-    try {
-      const task = await api.task<T>(taskId);
-      target.value = task;
-      if (task.status === "done") {
-        pollTimers.delete(kind);
-        await onDone(task);
-        return;
-      }
-      if (task.status === "error" || task.status === "not_found") {
-        pollTimers.delete(kind);
-        errorMessage.value = task.error || `任务状态异常：${task.status}`;
-        return;
-      }
-      const timer = window.setTimeout(poll, 1000);
-      pollTimers.set(kind, timer);
-    } catch (error) {
-      pollTimers.delete(kind);
-      errorMessage.value = getError(error);
-    }
-  };
-
-  void poll();
-}
-
-function toggleCitation(index: number) {
-  expandedCitations.value = {
-    ...expandedCitations.value,
-    [index]: !expandedCitations.value[index]
-  };
-}
-
-function isBusy(task: TaskState | null) {
-  return task?.status === "pending" || task?.status === "running";
-}
-
-function statusText(value: boolean | undefined) {
-  return value ? "Online" : "Standby";
-}
-
-function formatPercent(value?: number) {
-  if (value === undefined || Number.isNaN(value)) return "0%";
-  return `${Math.round(value * 100)}%`;
-}
-
-function formatNumber(value: unknown, digits = 0) {
-  if (typeof value !== "number" || Number.isNaN(value)) return "--";
-  return new Intl.NumberFormat("zh-CN", {
-    maximumFractionDigits: digits,
-    minimumFractionDigits: digits
-  }).format(value);
-}
-
-function shortText(value: unknown) {
-  if (value === null || value === undefined || value === "") return "--";
-  if (typeof value === "number") return formatNumber(value, value % 1 === 0 ? 0 : 3);
-  if (typeof value === "boolean") return value ? "true" : "false";
-  return String(value);
-}
-
-function getError(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function downloadText(filename: string, content: string) {
-  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
+onMounted(async () => {
+  await refreshAll()
+  await loadQuestions()
+  window.setInterval(refreshAll, 10000)
+})
 </script>
 
 <template>
   <main class="app-shell">
-    <section class="topbar">
-      <div>
-        <p class="eyebrow"><Sparkles :size="14" /> Multi-Agent RAG</p>
-        <h1>Luminous Knowledge Engine</h1>
-      </div>
-
-      <div class="status-grid">
-        <div class="status-pill" :class="health">
-          <Activity :size="16" />
-          <span>API {{ health === "ok" ? "Online" : health === "down" ? "Offline" : "Checking" }}</span>
-        </div>
-        <div class="status-pill" :class="{ active: state?.rag_initialized }">
-          <BrainCircuit :size="16" />
-          <span>RAG {{ statusText(state?.rag_initialized) }}</span>
-        </div>
-        <div class="status-pill" :class="{ active: state?.task_running }">
-          <Workflow :size="16" />
-          <span>{{ state?.task_running ? "Task Running" : "No Task" }}</span>
+    <aside class="sidebar">
+      <div class="brand">
+        <Sparkles :size="22" />
+        <div>
+          <strong>智能文档问答系统</strong>
+          <span>Multi-Agent RAG</span>
         </div>
       </div>
-    </section>
 
-    <section v-if="errorMessage || notice" class="signal-stack">
-      <div v-if="errorMessage" class="signal error">
-        <ShieldAlert :size="18" />
-        <span>{{ errorMessage }}</span>
-        <button class="icon-button" title="关闭" @click="errorMessage = ''"><X :size="16" /></button>
-      </div>
-      <div v-if="notice" class="signal">
-        <Sparkles :size="18" />
-        <span>{{ notice }}</span>
-        <button class="icon-button" title="关闭" @click="notice = ''"><X :size="16" /></button>
-      </div>
-    </section>
+      <label class="upload-zone">
+        <Upload :size="18" />
+        <span>上传文档</span>
+        <input type="file" accept=".pdf,.docx,.txt" @change="onUploadDocument" />
+        <small>PDF / DOCX / TXT</small>
+      </label>
 
-    <section class="overview-band">
-      <div class="metric-block">
-        <span>Documents</span>
-        <strong>{{ state?.document_count ?? documents.length }}</strong>
+      <div v-if="uploadTask && uploadTask.status !== 'done'" class="task-strip">
+        <span>{{ uploadTask.stage || 'processing' }}</span>
+        <div><i :style="{ width: `${uploadProgress}%` }" /></div>
       </div>
-      <div class="metric-block">
-        <span>Messages</span>
-        <strong>{{ state?.message_count ?? messages.length }}</strong>
-      </div>
-      <div class="metric-block">
-        <span>Answers</span>
-        <strong>{{ assistantCount }}</strong>
-      </div>
-      <div class="metric-block wide">
-        <span>Restore</span>
-        <strong>{{ state?.restore_status || "Ready" }}</strong>
-      </div>
-    </section>
 
-    <div class="workspace-grid">
-      <aside class="panel document-panel">
-        <div class="panel-heading">
-          <div>
-            <p class="eyebrow"><Database :size="14" /> Corpus</p>
-            <h2>文档库</h2>
-          </div>
-          <label class="primary-button upload-button" title="上传文档">
-            <UploadCloud :size="17" />
-            <span>Upload</span>
-            <input type="file" accept=".pdf,.docx,.txt" @change="onUploadDocument" />
-          </label>
+      <section class="sidebar-section">
+        <div class="section-title">
+          <FileText :size="16" />
+          <span>文档</span>
+          <small>{{ documents.length }}</small>
         </div>
-
-        <div v-if="uploadTask" class="task-card">
-          <div class="task-card-top">
-            <span>{{ uploadTask.stage || uploadTask.status }}</span>
-            <strong>{{ formatPercent(uploadTask.progress) }}</strong>
-          </div>
-          <div class="progress-track"><span :style="{ width: formatPercent(uploadTask.progress) }" /></div>
-          <p>{{ uploadTask.last_id || uploadTask.type || uploadTask.task_id }}</p>
-        </div>
-
-        <div class="document-list">
-          <article v-for="doc in documents" :key="doc.name" class="document-item">
-            <button class="document-main" @click="openPreview(doc.name)">
-              <FileText :size="19" />
-              <span>
-                <strong>{{ doc.name }}</strong>
-                <small>{{ doc.type || "DOC" }} · {{ doc.chunks ?? 0 }} chunks · {{ doc.pages ?? 0 }} pages</small>
-              </span>
+        <div class="doc-list">
+          <article v-for="doc in documents" :key="doc.name" class="doc-row">
+            <button class="doc-main" @click="selectedDocument = doc.name; activeTab = 'stats'">
+              <strong>{{ doc.name }}</strong>
+              <span>{{ doc.chunks }} chunks · {{ doc.type }}</span>
             </button>
-            <button class="icon-button danger" :title="deletingName === doc.name ? '再次点击确认删除' : '删除文档'" @click="deleteDocument(doc.name)">
-              <Trash2 :size="16" />
+            <button class="icon-button danger" title="删除文档" @click="removeDocument(doc.name)">
+              <Trash2 :size="15" />
             </button>
           </article>
-          <div v-if="!documents.length" class="empty-state">
-            <Database :size="28" />
-            <p>上传文档后，向量库、BM25 和图谱状态会在这里恢复。</p>
-          </div>
+          <p v-if="!documents.length" class="muted">暂无文档</p>
         </div>
+      </section>
 
-        <button class="secondary-button danger-zone" @click="clearAllData">
-          <Trash2 :size="16" />
-          {{ confirmClearData ? "再次点击清空全部数据" : "清空全部数据" }}
+      <section class="sidebar-section graph-card">
+        <div class="section-title">
+          <Database :size="16" />
+          <span>图数据库</span>
+          <button
+            class="icon-button"
+            :class="{ spinning: graphRefreshing }"
+            title="刷新图统�?
+            :disabled="graphRefreshing"
+            @click="refreshGraph"
+          >
+            <RefreshCw :size="15" />
+          </button>
+        </div>
+        <div class="metric-grid compact">
+          <div><strong>{{ graphCounts.nodes }}</strong><span>节点</span></div>
+          <div><strong>{{ graphCounts.edges }}</strong><span>�?/span></div>
+        </div>
+        <p v-if="appState?.neo4j.error" class="muted">{{ appState.neo4j.error }}</p>
+        <div class="entity-list">
+          <span v-for="entity in appState?.neo4j.top_entities ?? []" :key="String(entity[0])">
+            {{ entity[0] }} · {{ entity[1] }}
+          </span>
+        </div>
+      </section>
+
+      <section class="sidebar-section">
+        <div class="section-title">
+          <Sparkles :size="16" />
+          <span>示例问题</span>
+        </div>
+        <button class="sample" @click="askQuestion('这篇文档的核心观点是什么？')">这篇文档的核心观点是什么？</button>
+        <button class="sample" @click="askQuestion('请总结文档中的关键技术点�?)">请总结文档中的关键技术点�?/button>
+        <button class="sample" @click="askQuestion('文档中有哪些值得注意的风险？')">文档中有哪些值得注意的风险？</button>
+      </section>
+
+      <div class="sidebar-actions">
+        <a class="secondary-button" :href="api.exportChatUrl()" download="chat_history.txt">
+          <Download :size="15" /> 导出对话
+        </a>
+        <button class="secondary-button" @click="clearMessages">
+          <X :size="15" /> 清空对话
         </button>
-      </aside>
+        <button class="secondary-button danger-text" :disabled="clearingData" @click="clearData">
+          <Trash2 :size="15" /> {{ clearingData ? '清空�? : '清空数据' }}
+        </button>
+      </div>
+    </aside>
 
-      <section class="panel chat-panel">
-        <div class="panel-heading">
-          <div>
-            <p class="eyebrow"><MessageSquare :size="14" /> Conversation</p>
-            <h2>智能问答</h2>
-          </div>
-          <div class="toolbar">
-            <button class="tertiary-button" title="刷新对话" @click="refreshMessages"><RefreshCcw :size="16" /></button>
-            <button class="tertiary-button" title="导出对话" @click="exportChat"><Download :size="16" /></button>
-            <button class="tertiary-button" title="清空对话" @click="clearChat"><Trash2 :size="16" /></button>
-          </div>
+    <section class="workspace">
+      <header class="topbar">
+        <div>
+          <h1>智能文档问答系统</h1>
+          <p>{{ appState?.restore_status || 'Ready' }}</p>
         </div>
+        <div class="metric-row">
+          <div><strong>{{ documents.length }}</strong><span>文档</span></div>
+          <div><strong>{{ messages.length }}</strong><span>消息</span></div>
+          <div><strong>{{ totalChunks }}</strong><span>�?/span></div>
+        </div>
+      </header>
 
-        <div class="chat-stream">
-          <article v-for="(message, index) in messages" :key="`${message.role}-${index}`" class="message" :class="message.role">
-            <div class="message-avatar">
-              <Bot v-if="message.role === 'assistant'" :size="17" />
-              <MessageSquare v-else :size="17" />
+      <nav class="tabs">
+        <button
+          v-for="tab in tabs"
+          :key="tab.key"
+          :class="{ active: activeTab === tab.key }"
+          @click="activeTab = tab.key"
+        >
+          <component :is="tab.icon" :size="17" />
+          {{ tab.label }}
+        </button>
+      </nav>
+
+      <div v-if="notice" class="notice">{{ notice }}</div>
+      <div v-if="error" class="notice error">{{ error }}</div>
+
+      <section v-if="activeTab === 'chat'" class="panel chat-panel">
+        <div class="messages">
+          <div v-if="!messages.length && !chatTask" class="empty-chat">
+            <Bot :size="30" />
+            <strong>上传文档后开始提�?/strong>
+          </div>
+          <article v-for="(message, index) in messages" :key="index" :class="['message', message.role]">
+            <div class="message-head">
+              <span>{{ message.role === 'user' ? 'You' : 'Assistant' }}</span>
             </div>
-            <div class="message-body">
-              <p>{{ message.content }}</p>
-
-              <div v-if="message.citations?.length" class="citation-list">
-                <button
-                  v-for="citation in message.citations"
-                  :key="`${index}-${citation.source_number}`"
-                  class="citation-chip"
-                  @click="toggleCitation(index * 100 + citation.source_number)"
-                >
-                  <Search :size="14" />
-                  Source {{ citation.source_number }} · {{ citation.filename }} · {{ formatNumber(citation.score, 3) }}
-                </button>
-                <div
-                  v-for="citation in message.citations"
-                  v-show="expandedCitations[index * 100 + citation.source_number]"
-                  :key="`preview-${index}-${citation.source_number}`"
-                  class="citation-preview"
-                >
-                  <strong>{{ citation.chunk_id || citation.filename }}</strong>
-                  <p>{{ citation.text_preview }}</p>
-                </div>
-              </div>
-
-              <div v-if="message.workflow_metadata" class="metadata-grid">
-                <span>strategy {{ shortText(message.workflow_metadata.strategy) }}</span>
-                <span>rounds {{ shortText(message.workflow_metadata.retrieval_rounds) }}</span>
-                <span>validation {{ shortText(message.workflow_metadata.validation_score) }}</span>
-                <span>critic {{ shortText(message.workflow_metadata.critic_score) }}</span>
-              </div>
+            <p>{{ message.content }}</p>
+            <div v-if="message.citations?.length" class="citations">
+              <button
+                v-for="citation in message.citations"
+                :key="citation.chunk_id"
+                class="chip source-chip"
+                :class="{ expanded: openCitations[citationKey(index, citation.chunk_id, citation.source_number)] }"
+                :aria-expanded="openCitations[citationKey(index, citation.chunk_id, citation.source_number)] ? 'true' : 'false'"
+                @click="toggleCitation(index, citation.chunk_id, citation.source_number)"
+              >
+                来源 {{ citation.source_number }} · {{ citation.filename }} · {{ citation.score.toFixed(3) }}
+              </button>
+            </div>
+            <div v-if="message.citations?.length" class="source-panels">
+              <article
+                v-for="citation in message.citations"
+                v-show="openCitations[citationKey(index, citation.chunk_id, citation.source_number)]"
+                :key="`${citation.chunk_id}-panel`"
+                class="source-panel"
+              >
+                <header>
+                  <strong>[{{ citation.source_number }}] {{ citation.filename }}</strong>
+                  <span>{{ citation.score.toFixed(4) }}</span>
+                </header>
+                <div class="source-id">{{ citation.chunk_id }}</div>
+                <p>{{ citation.text_preview }}</p>
+              </article>
+            </div>
+            <div v-if="message.workflow_metadata" class="metadata-grid">
+              <span>strategy: {{ message.workflow_metadata.strategy }}</span>
+              <span>critic: {{ message.workflow_metadata.critic_score }}</span>
+              <span>rounds: {{ message.workflow_metadata.retrieval_rounds }}</span>
             </div>
           </article>
-
-          <div v-if="isBusy(chatTask)" class="thinking-block">
-            <Loader2 class="spin" :size="18" />
-            <span>{{ chatTask?.stage || "Multi-agent workflow running" }}</span>
-            <strong>{{ formatPercent(chatTask?.progress) }}</strong>
-          </div>
-
-          <div v-if="!messages.length" class="empty-state chat-empty">
-            <BrainCircuit :size="34" />
-            <p>完成文档上传后，可以从这里发起异步多 Agent 检索问答。</p>
-          </div>
+          <article v-if="chatTask" class="message assistant loading-message">
+            <div class="message-head">
+              <span>Assistant</span>
+              <span class="loading-dots"><i /><i /><i /></span>
+            </div>
+            <p>{{ chatTask.last_id || '正在处理问题...' }}</p>
+            <div class="task-strip wide">
+              <span>{{ chatTask.stage || chatTask.status }} · {{ chatProgress }}%</span>
+              <div><i :style="{ width: `${chatProgress}%` }" /></div>
+            </div>
+          </article>
         </div>
-
-        <form class="composer" @submit.prevent="sendQuestion">
-          <textarea
-            v-model="query"
-            :disabled="!state?.rag_initialized || isBusy(chatTask)"
-            placeholder="输入一个和文档相关的问题..."
-            rows="3"
-          />
-          <button class="primary-button send-button" :disabled="!query.trim() || !canAsk">
-            <Send :size="17" />
-            <span>Send</span>
+        <form class="command-bar" @submit.prevent="askQuestion()">
+          <Sparkles :size="20" />
+          <input v-model="query" :disabled="busy" placeholder="请输入您关于文档的问�?.." />
+          <button :disabled="busy || !query.trim()" title="发�?>
+            <Send :size="18" />
           </button>
         </form>
       </section>
 
-      <aside class="side-stack">
-        <section class="panel insight-panel">
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow"><BarChart3 :size="14" /> Telemetry</p>
-              <h2>系统分析</h2>
-            </div>
-            <button class="tertiary-button" title="刷新状态" @click="refreshAll"><RefreshCcw :size="16" /></button>
-          </div>
-
-          <div class="metric-list">
-            <div><span>Neo4j</span><strong>{{ state?.neo4j.available ? "Available" : "Unavailable" }}</strong></div>
-            <div><span>Nodes</span><strong>{{ neo4jCounts.nodes ?? 0 }}</strong></div>
-            <div><span>Edges</span><strong>{{ neo4jCounts.edges ?? neo4jCounts.relationships ?? 0 }}</strong></div>
-            <div><span>Cache Hit Rate</span><strong>{{ formatPercent(performance.cache_hit_rate) }}</strong></div>
-            <div><span>Avg Latency</span><strong>{{ formatNumber(performance.avg_latency_ms, 0) }} ms</strong></div>
-            <div><span>Total Queries</span><strong>{{ performance.total_queries ?? 0 }}</strong></div>
-          </div>
-
-          <div class="toolbar full">
-            <button class="secondary-button" @click="refreshGraph"><Workflow :size="16" /> Graph</button>
-            <button class="secondary-button" @click="refreshPerformance"><Activity :size="16" /> Perf</button>
-            <button class="secondary-button" @click="savePerformance"><Download :size="16" /> Save</button>
-          </div>
-        </section>
-
-        <section class="panel latest-panel">
-          <p class="eyebrow"><Bot :size="14" /> Latest Answer</p>
-          <p>{{ latestAssistant?.content || "还没有助手回答。" }}</p>
-        </section>
-      </aside>
-    </div>
-
-    <section class="panel evaluation-panel">
-      <div class="panel-heading">
-        <div>
-          <p class="eyebrow"><FileJson :size="14" /> RAGAS</p>
-          <h2>评估工作台</h2>
+      <section v-else-if="activeTab === 'evaluation'" class="panel stack">
+        <div class="section-heading">
+          <h2>RAGAS 评估</h2>
         </div>
+        <p class="hint">
+          �?RAGAS 对“检�?+ 回答”质量打分（0�?，越高越好）：Faithfulness（回答是否忠于上下文）、Relevancy（是否贴合问题）�?          Context Precision（检索是否精确）、Context Recall（检索是否覆盖关键信息）�?        </p>
         <div class="toolbar">
-          <button class="secondary-button" @click="loadQuestions"><RefreshCcw :size="16" /> Load</button>
-          <label class="secondary-button upload-button">
-            <UploadCloud :size="16" />
-            JSON
-            <input type="file" accept=".json" @change="onUploadQuestions" />
+          <label class="secondary-button">
+            <Upload :size="15" /> 上传问题
+            <input type="file" accept=".json" @change="uploadQuestionFile" />
           </label>
-          <button class="primary-button" :disabled="isBusy(ragasTask)" @click="startRagas">
-            <Activity v-if="!isBusy(ragasTask)" :size="16" />
-            <Loader2 v-else class="spin" :size="16" />
-            Run
-          </button>
+          <input v-model="testFile" class="path-input" />
+          <button class="secondary-button" @click="loadQuestions()">刷新</button>
+          <label class="check">
+            <input v-model="reuseRagOutputs" type="checkbox" />
+            复用 RAG 输出
+          </label>
+          <button class="primary-button" :disabled="!!evalTask && evalTask.status === 'running'" @click="startEvaluation">
+            <Activity :size="16" /> 开始评�?          </button>
         </div>
-      </div>
-
-      <div class="evaluation-controls">
-        <label>
-          <span>Test file</span>
-          <input v-model="testFile" type="text" />
-        </label>
-        <label class="toggle-row">
-          <input v-model="reuseRagOutputs" type="checkbox" />
-          <span>复用已有 RAG 输出</span>
-        </label>
-      </div>
-
-      <div v-if="ragasTask" class="task-card evaluation-task">
-        <div class="task-card-top">
-          <span>{{ ragasTask.stage || ragasTask.status }}</span>
-          <strong>{{ formatPercent(ragasTask.progress) }}</strong>
+        <div v-if="evalTask" class="task-strip wide">
+          <span>{{ evalTask.status }} · {{ evalTask.stage || 'waiting' }} · {{ evalTask.current || 0 }}/{{ evalTask.total || 0 }}</span>
+          <div><i :style="{ width: `${evalProgress}%` }" /></div>
         </div>
-        <div class="progress-track"><span :style="{ width: formatPercent(ragasTask.progress) }" /></div>
-        <p>{{ ragasTask.current || 0 }} / {{ ragasTask.total || 0 }} · {{ ragasTask.last_id || ragasTask.task_id }}</p>
-      </div>
-
-      <div class="evaluation-grid">
-        <div class="question-list">
-          <article v-for="item in questions.slice(0, 8)" :key="item.id" class="question-item">
-            <strong>{{ item.id }}</strong>
-            <p>{{ item.question }}</p>
-            <small>{{ item.question_type || "general" }} · {{ item.reference || "no reference" }}</small>
-          </article>
-          <div v-if="!questions.length" class="empty-state">
-            <FileJson :size="28" />
-            <p>加载或上传测试问题后，评估队列会显示在这里。</p>
+        <div v-if="evaluationResult" class="metric-grid">
+          <div><strong>{{ evaluationResult.summary?.num_questions ?? '-' }}</strong><span>问题�?/span></div>
+          <div><strong>{{ evaluationResult.summary?.num_success ?? '-' }}</strong><span>成功</span></div>
+          <div><strong>{{ evaluationResult.summary?.num_failed ?? '-' }}</strong><span>失败</span></div>
+          <div><strong>{{ typeof evaluationResult.summary?.mean_overall === 'number' ? evaluationResult.summary.mean_overall.toFixed(2) : '-' }}</strong><span>Overall 平均</span></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Question</th>
+                <th>Type</th>
+                <th>Reference</th>
+                <th>实际命中 chunk_id</th>
+                <th>参�?chunk_id</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in questionRows" :key="item.id">
+                <td>{{ item.id }}</td>
+                <td>{{ item.question }}</td>
+                <td>{{ item.question_type }}</td>
+                <td>{{ item.reference }}</td>
+                <td class="id-cell">{{ item.retrieved_chunk_ids?.length ? item.retrieved_chunk_ids.join(', ') : '-' }}</td>
+                <td class="id-cell">{{ item.gold_chunk_ids?.length ? item.gold_chunk_ids.join(', ') : '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <section v-if="evaluationResult" class="evaluation-results">
+          <div class="section-heading">
+            <h2>评估结果</h2>
           </div>
-        </div>
-
-        <div class="result-panel">
-          <div v-if="summaryEntries.length" class="summary-grid">
-            <div v-for="[key, value] in summaryEntries" :key="key">
-              <span>{{ key }}</span>
-              <strong>{{ shortText(value) }}</strong>
-            </div>
+          <div class="metric-grid">
+            <div><strong>{{ typeof evaluationResult.summary.mean_faithfulness === 'number' ? evaluationResult.summary.mean_faithfulness.toFixed(2) : '-' }}</strong><span>Faithfulness 平均</span></div>
+            <div><strong>{{ typeof evaluationResult.summary.mean_answer_relevancy === 'number' ? evaluationResult.summary.mean_answer_relevancy.toFixed(2) : '-' }}</strong><span>Relevancy 平均</span></div>
+            <div><strong>{{ typeof evaluationResult.summary.mean_context_precision === 'number' ? evaluationResult.summary.mean_context_precision.toFixed(2) : '-' }}</strong><span>Precision 平均</span></div>
+            <div><strong>{{ typeof evaluationResult.summary.mean_context_recall === 'number' ? evaluationResult.summary.mean_context_recall.toFixed(2) : '-' }}</strong><span>Recall 平均</span></div>
           </div>
-
-          <div v-if="scoreRows.length" class="score-table-wrap">
+          <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th v-for="column in scoreColumns" :key="column">{{ column }}</th>
+                  <th>ID</th>
+                  <th>Faithfulness</th>
+                  <th>Relevancy</th>
+                  <th>Precision</th>
+                  <th>Recall</th>
+                  <th>Overall</th>
+                  <th>Error</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(row, index) in scoreRows" :key="index">
-                  <td v-for="column in scoreColumns" :key="column">{{ shortText(row[column]) }}</td>
+                <tr v-for="row in evaluationResult.scores" :key="`${row.id}-score`">
+                  <td>{{ row.id }}</td>
+                  <td>{{ typeof row.faithfulness === 'number' ? row.faithfulness.toFixed(2) : '-' }}</td>
+                  <td>{{ typeof row.answer_relevancy === 'number' ? row.answer_relevancy.toFixed(2) : '-' }}</td>
+                  <td>{{ typeof row.context_precision === 'number' ? row.context_precision.toFixed(2) : '-' }}</td>
+                  <td>{{ typeof row.context_recall === 'number' ? row.context_recall.toFixed(2) : '-' }}</td>
+                  <td>{{ typeof row.overall === 'number' ? row.overall.toFixed(2) : '-' }}</td>
+                  <td>{{ row.error || '-' }}</td>
                 </tr>
               </tbody>
             </table>
           </div>
-
-          <div v-if="ragasResult" class="path-list">
-            <span v-if="ragasResult.csv_path">CSV: {{ ragasResult.csv_path }}</span>
-            <span v-if="ragasResult.jsonl_path">JSONL: {{ ragasResult.jsonl_path }}</span>
-            <span v-if="ragasResult.summary_path">Summary: {{ ragasResult.summary_path }}</span>
+          <div class="result-paths">
+            <span>RAG 输出：{{ evaluationResult.rag_outputs_path }}</span>
+            <span>评分文件：{{ evaluationResult.scores_path }}</span>
+            <span>汇总文件：{{ evaluationResult.summary_path }}</span>
           </div>
+        </section>
+      </section>
 
-          <div v-if="!ragasResult" class="empty-state">
-            <BarChart3 :size="28" />
-            <p>RAGAS 完成后，summary、scores 和输出路径会显示在这里。</p>
-          </div>
+      <section v-else-if="activeTab === 'stats'" class="panel stack">
+        <div class="metric-grid">
+          <div><strong>{{ totalChunks }}</strong><span>总块�?/span></div>
+          <div><strong>{{ userQueries }}</strong><span>查询次数</span></div>
+          <div><strong>{{ documents.length }}</strong><span>文档数量</span></div>
+          <div><strong>{{ appState?.rag_initialized ? 'Ready' : 'Idle' }}</strong><span>系统状�?/span></div>
         </div>
-      </div>
+        <div class="toolbar">
+          <select v-model="selectedDocument" class="path-input">
+            <option v-for="doc in documents" :key="doc.name" :value="doc.name">{{ doc.name }}</option>
+          </select>
+          <button class="secondary-button" @click="loadPreview">加载预览</button>
+        </div>
+        <article v-if="selectedDocument" class="doc-detail">
+          <h2>{{ selectedDocument }}</h2>
+          <p v-if="preview">{{ preview.chars.toLocaleString() }} 字符 · {{ preview.words.toLocaleString() }} �?/p>
+          <pre v-if="preview">{{ preview.text }}</pre>
+        </article>
+      </section>
+
+      <section v-else class="panel stack">
+        <div class="metric-grid">
+          <div><strong>{{ perf.total_queries ?? 0 }}</strong><span>总查�?/span></div>
+          <div><strong>{{ perf.avg_latency_ms ? (perf.avg_latency_ms / 1000).toFixed(2) + 's' : '-' }}</strong><span>平均延迟</span></div>
+          <div><strong>{{ perf.cache_hit_rate ? (perf.cache_hit_rate * 100).toFixed(1) + '%' : '0%' }}</strong><span>缓存命中</span></div>
+          <div><strong>{{ perf.avg_chunks?.toFixed?.(1) ?? '-' }}</strong><span>平均块数</span></div>
+        </div>
+        <button class="primary-button fit" @click="savePerformance">
+          <Download :size="16" /> 保存指标
+        </button>
+      </section>
     </section>
-
-    <aside v-if="previewOpen && preview" class="preview-drawer">
-      <div class="panel-heading">
-        <div>
-          <p class="eyebrow"><FileText :size="14" /> Preview</p>
-          <h2>{{ preview.name }}</h2>
-        </div>
-        <button class="icon-button" title="关闭预览" @click="previewOpen = false"><X :size="18" /></button>
-      </div>
-      <div class="metadata-grid">
-        <span>{{ preview.chars }} chars</span>
-        <span>{{ preview.words }} words</span>
-      </div>
-      <pre>{{ preview.text }}</pre>
-    </aside>
   </main>
 </template>
+
